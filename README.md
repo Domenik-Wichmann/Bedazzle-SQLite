@@ -54,9 +54,11 @@ CSV columns are preserved as text by default to protect identifiers and leading 
 
 For repeated analysis of a large CSV, import it as Parquet once. Keep the working files on an SSD and leave space for both output and temporary files. Conversion may change row order; use ORDER BY when order matters.
 
+Bedazzle keeps a warm engine instead of starting Python/DuckDB for every query. CSV types and separators are learned at import and reused, and compatible older imported views are upgraded after their schema is checked. Normal read queries no longer rebuild the workspace sidebar/history. See the measured before/after results in `VERIFICATION.md`.
+
 **Performance & settings** shows installed/available RAM and free disk. Automatic defaults leave room for Windows and other applications: up to 4 GB of DuckDB buffer memory, up to four query threads (fewer with small memory budgets), a bounded spill directory, and a five-minute operation limit. Quiet uses at most two threads. Raise the time limit for long conversions, or select Until I cancel.
 
-The buffer budget is **not a hard cap on total process RAM**. Heavy work runs in a separate lower-priority process; Cancel/timeouts stop it and the next operation reopens the workspace. This reduces pressure but cannot promise every query will avoid slowdown. No real user-provided 5 GB file has been benchmarked here.
+The buffer budget is **not a hard cap on total process RAM**. Heavy work runs in a separate lower-priority engine process that stays warm between queries. Cancel/timeouts interrupt the active query; a stuck or crashed worker is restarted automatically. This reduces repeated startup and cache loss without promising every query will avoid slowdown. No real user-provided 5 GB file has been benchmarked here.
 
 The UI normally shows 100 rows per page, optionally 250/500. Responses are additionally bounded to about 1 MB of values, 10,000 cells, 120 displayed columns and 4,096 preview characters per text cell. Full exports preserve complete values and all selected columns. There is no fixed 100,000-row total browsing limit. Deep OFFSET pages can be slower. Exact counts are briefly reused for navigation while source-file/database stamps are unchanged; clicking Run requests a fresh count.
 
@@ -66,7 +68,9 @@ Your files, saved SQL, settings and local database live under `workspace/bedazzl
 
 The app binds to `127.0.0.1` and uses a random session token. Its UI has no external fonts/scripts, analytics, AI service or cloud dependency. SQL you choose to run can still write local files, access remote data or install extensions with your account’s permissions.
 
-Each operation has a fresh DuckDB connection. Ordinary tables/views persist. Keep temporary tables, transactions, session variables or ATTACH workflows within one SQL script, or use ordinary working tables across separate Run clicks. Statements committed before cancellation remain committed. Pages/exports rerun SQL; external changes or nondeterministic queries can change their results.
+The engine connection stays open between operations, so temporary tables, variables and ATTACH connections can be used across Run clicks while the app stays open. Ordinary tables/views survive app restarts. Restarting the app or recovering a hard-stopped worker resets temporary/session state. Cancel or a failed operation rolls back an open transaction; already committed statements remain committed. Pages/exports rerun SQL; external changes or nondeterministic queries can change their results.
+
+The Done effect is a small, transparent, click-through animation lasting about 1.4 seconds. It has no card, background, border or dismiss button, and does not move other notifications. Reduced motion disables flying confetti.
 
 ## Source and checks
 

@@ -19,7 +19,7 @@ import time
 from urllib.parse import urlparse
 import uuid
 
-from engine import ROOT, worker
+from engine import ROOT, serve_worker
 
 
 def hardware():
@@ -108,6 +108,10 @@ class Jobs:
         self.context = mp.get_context('spawn')
         self.closed = False
         self.count_cache = {}
+        self.channel=None
+        self.progress=None
+        self.cancelled=None
+        self.watcher=None
 
     def settings(self):
         return self.store.get('settings', {'profile': 'balanced', 'memory_mb': 0, 'threads': 0,
@@ -177,23 +181,50 @@ class Jobs:
             job = {'id': job_id, 'action': action, 'payload': payload, 'status': 'running',
                    'created': time.time(), 'progress': None, 'settings': settings}
             job['_count_key']=count_key
-            receiver, sender = self.context.Pipe(duplex=False)
-            progress = self.context.Value('d', -1.0)
-            process = self.context.Process(target=worker, args=(str(self.workspace), settings, job, sender, progress), daemon=True)
             self.items[job_id] = job
-            self.active_id, self.process = job_id, process
             try:
-                process.start()
+                if self.process is None or not self.process.is_alive():
+                    self.stop_worker()
+                    parent,child=self.context.Pipe(duplex=True)
+                    self.progress=self.context.Value('d',-1.0)
+                    self.cancelled=self.context.Event()
+                    self.process=self.context.Process(target=serve_worker,
+                        args=(str(self.workspace),child,self.progress,self.cancelled),daemon=True)
+                    self.channel=parent
+                    self.process.start()
+                    child.close()
+                self.cancelled.clear()
+                self.progress.value=-1
+                self.active_id=job_id
+                self.channel.send(job)
             except Exception:
-                self.active_id = self.process = None
+                self.active_id = None
+                self.stop_worker()
                 self.items.pop(job_id, None)
                 raise
-            sender.close()
-            threading.Thread(target=self.watch, args=(job, process, receiver, progress), daemon=True).start()
+            self.watcher=threading.Thread(target=self.watch,args=(job,self.process,self.channel,self.progress),daemon=True)
+            self.watcher.start()
             return {'id': job_id}
+
+    def stop_worker(self):
+        process,channel=self.process,self.channel
+        if process is not None:
+            try:
+                if process.is_alive() and channel:channel.send(None)
+            except (OSError,EOFError):pass
+            process.join(2)
+            if process.is_alive():process.terminate();process.join(2)
+            if process.pid:
+                temporary=(self.workspace/'temp'/('engine-'+str(process.pid))).resolve()
+                if temporary.parent==(self.workspace/'temp').resolve():shutil.rmtree(temporary,ignore_errors=True)
+        if channel:
+            try:channel.close()
+            except OSError:pass
+        self.process=self.channel=None
 
     def watch(self, job, process, receiver, progress):
         message = None
+        cancel_started=None
         try:
             while process.is_alive():
                 if receiver.poll(.15):
@@ -211,18 +242,20 @@ class Jobs:
                     if timeout and time.time() - job['created'] > timeout and job['status'] == 'running':
                         job['status'] = 'timed_out'
                         job['error'] = f'Operation stopped after {timeout} seconds. Increase the time limit in Performance if needed.'
-                        process.terminate()
-            process.join(5)
+                        self.cancelled.set()
+                    if job['status'] in ('cancelled','timed_out'):
+                        if cancel_started is None:cancel_started=time.monotonic()
+                        elif time.monotonic()-cancel_started>2:
+                            process.terminate()
+                            break
             if message is None and receiver.poll():
                 message = receiver.recv()
         except (EOFError, OSError):
             pass
         finally:
-            if process.is_alive():
-                process.kill()
-                process.join(3)
-            receiver.close()
             with self.lock:
+                if not process.is_alive() or message is None:
+                    self.stop_worker()
                 if job['status'] == 'running':
                     job.update(message or {'status': 'failed', 'error': 'The engine process stopped. Your workspace can be reopened; try a smaller query or lower thread count.'})
                 job['elapsed_ms'] = round((time.time() - job['created']) * 1000)
@@ -239,7 +272,7 @@ class Jobs:
                     if job['action'] == 'query' and not job['payload'].get('offset'):
                         self.store.remember(job['payload']['sql'], result['elapsed_ms'])
                 if self.active_id == job['id']:
-                    self.active_id = self.process = None
+                    self.active_id = None
                 # Only delete this job's own temporary artifacts.
                 temporary = (self.workspace / 'temp' / job['id']).resolve()
                 if temporary.parent == (self.workspace / 'temp').resolve():
@@ -271,15 +304,15 @@ class Jobs:
             job = self.items[self.active_id]
             if job['status'] == 'running':
                 job.update(status='cancelled', error='Cancelled. You can run another operation once cleanup finishes.')
-                self.process.terminate()
+                self.cancelled.set()
 
     def close(self):
         with self.lock:
             self.closed = True
             self.cancel()
-            process = self.process
-        if process:
-            process.join(5)
+            watcher=self.watcher
+        if watcher and watcher.is_alive():watcher.join(4)
+        with self.lock:self.stop_worker()
 
     def bootstrap(self):
         hw = hardware()

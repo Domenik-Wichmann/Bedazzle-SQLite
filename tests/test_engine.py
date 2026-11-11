@@ -4,7 +4,7 @@ import tempfile
 import time
 import unittest
 
-from engine import ROOT, create_connection, perform, page, reader, literal, identifier
+from engine import ROOT, create_connection, perform, page, reader, literal, identifier, optimize_registered_csv
 from app_server import Jobs
 
 TEST_ROOT = ROOT / 'workspace' / 'automated-tests'
@@ -36,6 +36,30 @@ class EngineTests(unittest.TestCase):
         self.conn = create_connection(self.root, SETTINGS, 'reopen')
         self.assertEqual(self.conn.execute('SELECT count(*) FROM "quoted source"').fetchone()[0], 3)
         self.assertEqual(self.conn.execute("SELECT current_setting('threads')").fetchone()[0], 1)
+
+    def test_csv_recipe_preserves_quoted_multiline_fields_and_typed_dates(self):
+        import csv
+        file=self.root/"quoted O'Brien.csv"
+        with file.open('w',newline='',encoding='utf-8') as output:
+            writer=csv.writer(output,delimiter=';')
+            writer.writerow(["Owner's ID",'note','day','price'])
+            writer.writerow(['001','one;\ntwo','2026-11-11','12.50'])
+            writer.writerow(['002','say "hello"','2026-11-12','8.25'])
+        for mode in ['text','auto']:
+            options={'types':mode,'delimiter':';','header':True}
+            expected=self.conn.execute('SELECT * FROM '+reader(file,options)).fetchall()
+            opened=self.perform('open',{'path':str(file),'name':mode,'options':options})
+            actual=self.conn.execute('SELECT * FROM '+identifier(opened['name'])).fetchall()
+            self.assertEqual(actual,expected)
+
+    def test_existing_csv_view_is_optimized_without_changing_its_data(self):
+        self.conn.execute('CREATE VIEW legacy AS SELECT * FROM '+reader(self.source))
+        self.conn.execute('INSERT INTO _wb_sources VALUES (?,?,?,?)',['legacy',str(self.source),self.source.stat().st_size,'csv'])
+        before=self.conn.execute('SELECT * FROM legacy').fetchall()
+        optimize_registered_csv(self.conn)
+        definition=self.conn.execute("SELECT sql FROM duckdb_views() WHERE view_name='legacy'").fetchone()[0]
+        self.assertRegex(definition,r'sample_size\s*=\s*1\b')
+        self.assertEqual(self.conn.execute('SELECT * FROM legacy').fetchall(),before)
 
     def test_conversion_preserves_all_records_and_never_overwrites(self):
         target = self.root / 'output.parquet'
@@ -177,6 +201,7 @@ class IsolatedWorkerTests(unittest.TestCase):
 
     def test_cancel_recovers_workspace_and_reapplies_settings(self):
         job = self.jobs.submit('query', {'sql':'SELECT sum(a.i*b.i) FROM range(100000000) a(i), range(100000000) b(i)'})
+        pid=self.jobs.process.pid
         time.sleep(.7)
         self.jobs.cancel()
         self.assertEqual(self.wait(job['id'])['status'], 'cancelled')
@@ -184,6 +209,35 @@ class IsolatedWorkerTests(unittest.TestCase):
         result = self.wait(next_job['id'])
         self.assertEqual(result['status'], 'succeeded', result)
         self.assertEqual(result['result']['rows'], [[42, 1]])
+        self.assertEqual(self.jobs.process.pid,pid)
+
+    def test_warm_connection_reuses_process_temp_tables_and_applies_new_settings(self):
+        first=self.jobs.submit('query',{'sql':'CREATE TEMP TABLE scratch AS SELECT 7 AS value;'})
+        self.assertEqual(self.wait(first['id'])['status'],'succeeded')
+        pid=self.jobs.process.pid
+        self.jobs.set_settings({**SETTINGS,'threads':2})
+        second=self.jobs.submit('query',{'sql':"SELECT value,current_setting('threads') FROM scratch"})
+        result=self.wait(second['id'])
+        self.assertEqual(result['result']['rows'],[[7,2]])
+        self.assertEqual(self.jobs.process.pid,pid)
+
+    def test_file_changes_are_visible_in_warm_connection(self):
+        path=self.jobs.workspace/'changing.csv'
+        path.write_text('id\n001\n002\n')
+        opened=self.jobs.submit('open',{'path':str(path),'name':'changing'})
+        self.assertEqual(self.wait(opened['id'])['status'],'succeeded')
+        first=self.jobs.submit('query',{'sql':'SELECT * FROM changing','force_count':True})
+        self.assertEqual(self.wait(first['id'])['result']['total_rows'],2)
+        path.write_text('id\n001\n002\n003\n')
+        second=self.jobs.submit('query',{'sql':'SELECT * FROM changing','force_count':True})
+        self.assertEqual(self.wait(second['id'])['result']['total_rows'],3)
+
+    def test_worker_crash_recovers_persistent_data(self):
+        first=self.jobs.submit('query',{'sql':'CREATE TABLE retained AS SELECT 42 AS value'})
+        self.assertEqual(self.wait(first['id'])['status'],'succeeded')
+        self.jobs.process.terminate();self.jobs.process.join(3)
+        second=self.jobs.submit('query',{'sql':'SELECT * FROM retained'})
+        self.assertEqual(self.wait(second['id'])['result']['rows'],[[42]])
 
     def test_time_limit_stops_worker(self):
         self.jobs.store.put('settings', {**SETTINGS, 'timeout':1})

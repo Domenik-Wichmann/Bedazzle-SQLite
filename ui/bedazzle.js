@@ -124,15 +124,14 @@
   }
   function celebrate(heading='Done',detail=''){
     document.querySelector('.celebration')?.remove();
-    const card=make('div','celebration');card.setAttribute('role','status');
-    const dismiss=make('button','celebration-dismiss','×');dismiss.setAttribute('aria-label','Dismiss celebration');dismiss.onclick=()=>card.remove();
-    card.append(make('span','celebration-emoji','🎉'),make('strong','',heading+'!'),make('p','',detail),dismiss);
-    if(!reduced.matches)for(let i=0;i<30;i++){
+    const card=make('div','celebration');card.setAttribute('role','status');card.setAttribute('aria-label',heading+'. '+detail);
+    card.append(make('span','celebration-emoji','🎉'),make('span','celebration-label',heading));
+    if(!reduced.matches)for(let i=0;i<16;i++){
       const piece=make('span','confetti');piece.setAttribute('aria-hidden','true');
-      piece.style.setProperty('--x',(Math.random()*440-220)+'px');piece.style.setProperty('--y',(-70-Math.random()*250)+'px');piece.style.setProperty('--r',(Math.random()*720-360)+'deg');
+      piece.style.setProperty('--x',(Math.random()*150-95)+'px');piece.style.setProperty('--y',(-25-Math.random()*105)+'px');piece.style.setProperty('--r',(Math.random()*500-250)+'deg');
       piece.style.setProperty('--delay',(Math.random()*.25)+'s');piece.style.setProperty('--color',['#d9b469','#b9dfad','#d1b8e8','#f0c7c0','#97c9bc'][i%5]);card.append(piece);
     }
-    document.body.append(card);lastCelebration=performance.now();setTimeout(()=>card.remove(),3200);
+    document.body.append(card);lastCelebration=performance.now();setTimeout(()=>card.remove(),1400);
   }
   function sparkle(event){
     if(reduced.matches||!event.isTrusted)return;

@@ -199,7 +199,7 @@ Automatic buffer budget: minimum of 4 GB, 25% of installed RAM, and 40% of avail
 
 Automatic threads: at most half the logical CPUs, capped at four and reduced for small budgets. Quiet caps at two threads. Temporary disk defaults to at most 10 GB and leaves a 2 GB free-space reserve at job start. This check does not reserve disk space; output files need additional room.
 
-The default operation limit is five minutes. Choose a longer limit or **Until I cancel** for a long conversion/export. Each operation runs in a lower-priority child process and receives the settings anew. **Cancel** or the time limit stops that worker. A new operation can then reopen the workspace.
+The default operation limit is five minutes. Choose a longer limit or **Until I cancel** for a long conversion/export. Queries share a warm lower-priority engine process and connection, with performance settings applied before each operation. **Cancel** or the time limit interrupts active SQL without discarding a healthy engine cache. If it does not respond within about two seconds, the worker is terminated and the next operation reopens the database. Persistent data survives; temporary/session state is reset after a hard restart.
 
 Prefer SSD storage, selected columns, early filters, Parquet for repeated analysis, sensible group cardinalities and selective joins. Avoid giant list/string aggregates, high-cardinality pivots and unnecessarily wide joins. Hardware budgets cannot guarantee every query avoids high RAM use or slowdown.
 
@@ -207,7 +207,7 @@ Prefer SSD storage, selected columns, early filters, Parquet for repeated analys
 
 Ordinary DuckDB tables/views, dataset metadata, named queries, history, settings and drafts persist in the workspace. Existing installations keep their earlier workspace folder. Imported file views reference the original file path; moving the file requires reopening it from its new location.
 
-Each operation uses a fresh connection. Temporary tables, session variables, transactions and ATTACH statements last only within the same SQL script, not separate Run clicks. Use ordinary tables for persistent working data:
+The connection stays open between Run clicks. Temporary tables, session variables, transactions and ATTACH connections can span operations during a healthy app session. App/worker restarts reset that session state. Errors and cancellation roll back any open transaction; already committed writes remain. Use ordinary tables for work that must survive restarts:
 
 ```sql
 CREATE TABLE working_catalogs AS SELECT * FROM "My catalogs";
@@ -219,7 +219,7 @@ Statements already committed before cancellation remain committed. Do not assume
 
 **Tips off/on** in the sidebar controls the little information badges. Tips are off by default. Turn them on and click an `i` badge for a control’s explanation; turn them off to clear the interface.
 
-Successful queries/conversions/exports show a brief lower-right “Done” celebration. Selected buttons have subtle click sparkles and a hover shimmer. Reduced-motion preferences suppress moving confetti and shimmer. These effects do not change query behavior or write extra data.
+Successful queries/conversions/exports show a tiny transparent lower-right animation for about 1.4 seconds. It is click-through, has no card or background, and does not move other notifications. Selected buttons have subtle click sparkles and a hover shimmer. Reduced-motion preferences suppress moving confetti and shimmer. These effects do not change query behavior or write extra data.
 
 ## Running, downloading and editing the project
 

@@ -78,24 +78,26 @@ function setBusy(value, action = '') {
 async function runJob(action, payload = {}, onPreview = null) {
   if (state.busy) throw new Error('An operation is already running. Wait for it or use Cancel.');
   setBusy(true, action);
-  let terminalError = null;
   try {
     const submitted = await api('/api/jobs', {action, payload});
-    let previewShown=false;
+    let previewShown=false,polls=0;
     for (;;) {
-      await pause(300);
+      await pause(previewShown||polls++>8?250:35);
       const job = await api('/api/jobs/' + submitted.id+(previewShown?'?preview=0':''));
       if(job.preview&&!previewShown&&onPreview){onPreview(job.preview);previewShown=true;$('job-label').textContent='Counting all matching results';$('job-detail').textContent='Your page is ready. The exact total is still being counted.';}
       $('job-time').textContent = `${Math.floor(Date.now()/1000 - job.created)}s`;
       if (job.progress !== null) $('job-progress').style.width = Math.min(100, job.progress) + '%';
       if (job.finished) {
         if (job.status !== 'succeeded') throw new Error(job.error || 'Operation stopped.');
+        if(job.result.catalog){
+          const changed=JSON.stringify(state.data.catalog)!==JSON.stringify(job.result.catalog);
+          state.data.catalog=job.result.catalog;
+          if(changed)renderCatalog();
+        }
         return job.result;
       }
     }
-  } catch (error) { terminalError = error; throw error; }
-  finally {
-    try { await refresh(); } catch (error) { if (!terminalError) report(error); }
+  } finally {
     setBusy(false);
   }
 }
@@ -274,7 +276,8 @@ async function runSQL(sql, offset = 0, reset = true, extra = {}) {
     state.result = result; state.activeSQL = sql; state.expanded.clear();
     cacheTab();
     $('editor-status').textContent = `Finished in ${(result.elapsed_ms/1000).toFixed(2)}s`;
-    renderResults(); setResultView('table');
+    if(previewed){renderResultSummary();updatePaging();}
+    else{renderResults();setResultView('table');}
     window.bedazzle?.celebrate('Done',`${result.total_rows !== undefined ? Number(result.total_rows).toLocaleString()+' results' : result.rows.length+' rows'} · ${(result.elapsed_ms/1000).toFixed(2)}s`);
   } catch (error) {
     if(previewed&&state.result?.total_status==='counting'){
@@ -326,10 +329,7 @@ function renderResults() {
   show('result-message',false);
   const table = tableFor(result, {interactive:true}); table.id = 'result-table';
   $('table-scroll').replaceChildren(table);
-  const total=result.total_rows;
-  $('result-count').textContent = total!==undefined?Number(total).toLocaleString():result.total_status==='counting'?'Counting…':result.total_status==='stopped'?'Count stopped':result.rows.length.toLocaleString();
-  const range=`Rows ${result.rows.length?(result.offset+1).toLocaleString():0}–${(result.offset+result.rows.length).toLocaleString()}`;
-  $('query-stat').textContent = `${range}${total!==undefined?' of '+Number(total).toLocaleString():result.total_status==='counting'?' · counting total…':result.total_status==='stopped'?' · total count stopped':''} · ${result.total_columns} columns${result.elapsed_ms!==undefined?' · '+(result.elapsed_ms/1000).toFixed(2)+'s':''}`;
+  renderResultSummary();
   const notes = [];
   if (result.total_columns > result.columns.length) notes.push(`Showing ${result.columns.length} of ${result.total_columns} columns. Select fewer columns in SQL to see the others.`);
   if (result.clipped_cells) notes.push('Long values are shortened in the preview. Full exports preserve them.');
@@ -337,6 +337,13 @@ function renderResults() {
   if (result.has_more && !/\border\s+by\b/i.test(result.sql)) notes.push('Add ORDER BY if you need a consistent row order across pages.');
   $('result-notice').textContent = notes.join(' '); show('result-notice',!!notes.length);
   updatePaging(); prepareChart();
+}
+function renderResultSummary(){
+  const result=state.result;if(!result)return;
+  const total=result.total_rows;
+  $('result-count').textContent = total!==undefined?Number(total).toLocaleString():result.total_status==='counting'?'Counting…':result.total_status==='stopped'?'Count stopped':result.rows.length.toLocaleString();
+  const range=`Rows ${result.rows.length?(result.offset+1).toLocaleString():0}–${(result.offset+result.rows.length).toLocaleString()}`;
+  $('query-stat').textContent = `${range}${total!==undefined?' of '+Number(total).toLocaleString():result.total_status==='counting'?' · counting total…':result.total_status==='stopped'?' · total count stopped':''} · ${result.total_columns} columns${result.elapsed_ms!==undefined?' · '+(result.elapsed_ms/1000).toFixed(2)+'s':''}`;
 }
 function updatePaging() {
   const result = state.result;

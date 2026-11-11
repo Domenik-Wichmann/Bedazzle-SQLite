@@ -25,6 +25,12 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
   assert.equal((await page.locator('#result-count').textContent()).trim(),'156');
   assert((await page.locator('#query-stat').textContent()).includes('of 156'));
   assert.equal(await page.locator('.celebration').count(),1);
+  const effect=await page.locator('.celebration').evaluate(element=>{
+   const rect=element.getBoundingClientRect(),css=getComputedStyle(element);
+   return {width:rect.width,height:rect.height,pointer:css.pointerEvents,background:css.backgroundColor,shadow:css.boxShadow,buttons:element.querySelectorAll('button').length};
+  });
+  assert(effect.width<120&&effect.height<80);assert.equal(effect.pointer,'none');
+  assert.equal(effect.background,'rgba(0, 0, 0, 0)');assert.equal(effect.shadow,'none');assert.equal(effect.buttons,0);
   await page.locator('#next-page').click();await idle();
   assert((await page.locator('#query-stat').textContent()).includes('Rows 101–156 of 156'));
   console.log('PASS: vertical line-number gutter, compact header, exact 156-result count and Done celebration');
@@ -78,7 +84,7 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
   assert.equal(await page.locator('#result-table tbody tr').count(),100);
   console.log('PASS: long count exposes a page immediately; cancelling retains that page without a false total');
   await query('SELECT * FROM range(156);');
-  await page.locator('.celebration-dismiss').click();
+  await page.locator('.celebration').waitFor({state:'hidden',timeout:3000});
   await page.screenshot({path:'workspace/verification/bedazzle.png',fullPage:true});
   await page.emulateMedia({reducedMotion:'reduce'});await query('SELECT 42;');
   assert.equal(await page.locator('.confetti').count(),0);

@@ -6,5 +6,5 @@ FILES=[
     'ui/index.html','ui/app.js','ui/style.css','ui/workspace.css','ui/bedazzle.js','ui/bedazzle.css','ui/favicon.svg',
     'examples/catalogs.csv','tests/test_engine.py','tests/test_launcher.py','tests/http_smoke.py',
     'tests/browser_smoke.cjs','tests/browser_persistence.cjs','tests/bedazzle_smoke.cjs',
-    'tests/stop_test_servers.py','tests/package_smoke.py','tests/benchmark.py',
+    'tests/stop_test_servers.py','tests/package_smoke.py','tests/benchmark.py','tests/performance.py',
 ]

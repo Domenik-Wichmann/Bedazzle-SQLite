@@ -145,11 +145,14 @@ def available_name(conn, stem, exact=False):
 def attach_source(conn, path, options=None, name=None):
     name = available_name(conn, name or path.stem, exact=bool(name))
     expression = reader(path, options)
-    # Validate the reader and get its schema before saving any metadata.
-    describe(conn, f'SELECT * FROM {expression}')
+    if path.suffix.lower() in ('.csv','.tsv','.txt'):
+        select_sql=csv_recipe(conn,path,expression)
+    else:
+        describe(conn, f'SELECT * FROM {expression}')
+        select_sql=f'SELECT * FROM {expression}'
     conn.execute('BEGIN')
     try:
-        conn.execute(f'CREATE VIEW {identifier(name)} AS SELECT * FROM {expression}')
+        conn.execute(f'CREATE VIEW {identifier(name)} AS {select_sql}')
         conn.execute('INSERT INTO _wb_sources VALUES (?, ?, ?, ?)',
                      [name, str(path), path.stat().st_size, path.suffix.lstrip('.').lower()])
         conn.execute('COMMIT')
@@ -157,6 +160,56 @@ def attach_source(conn, path, options=None, name=None):
         conn.execute('ROLLBACK')
         raise
     return name
+
+
+def csv_recipe(conn,path,expression):
+    """Keep the sniffed schema/dialect; only newline detection needs a tiny sample."""
+    cursor=conn.execute('SELECT * FROM '+expression.replace('read_csv(','sniff_csv(',1))
+    metadata=dict(zip([column[0] for column in cursor.description],cursor.fetchone()))
+    columns='{'+', '.join(literal(c['name'])+': '+literal(c['type']) for c in metadata['Columns'])+'}'
+    empty=lambda value:'' if value=='(empty)' else value
+    settings=['auto_detect=true','sample_size=1','delim='+literal(metadata['Delimiter']),
+              'quote='+literal(empty(metadata['Quote'])),'escape='+literal(empty(metadata['Escape'])),
+              'header='+str(metadata['HasHeader']).lower(),'skip=0','strict_mode=true','ignore_errors=false','columns='+columns]
+    # Explicit newline + strict_mode has an upstream CRLF edge case. Let the
+    # tiny sample detect newlines while retaining the validated column types.
+    if empty(metadata['Comment']):settings.append('comment='+literal(metadata['Comment']))
+    if metadata.get('DateFormat'):settings.append('dateformat='+literal(metadata['DateFormat']))
+    if metadata.get('TimestampFormat'):settings.append('timestampformat='+literal(metadata['TimestampFormat']))
+    return f'SELECT * FROM read_csv({literal(path.as_posix())}, '+', '.join(settings)+')'
+
+
+def optimize_registered_csv(conn):
+    """Upgrade only the app's simple imported CSV views; preserve custom SQL."""
+    import duckdb
+    rows=conn.execute("SELECT name,path FROM _wb_sources WHERE kind IN ('csv','tsv','txt')").fetchall()
+    for name,path in rows:
+        stored=conn.execute("SELECT sql FROM duckdb_views() WHERE view_name=? AND database_name=current_database() AND schema_name='main'",[name]).fetchone()
+        if not stored or re.search(r'sample_size\s*=\s*1\b',stored[0],re.I):continue
+        sql=stored[0]
+        try:
+            tokens=duckdb.tokenize(sql)
+            start=next(position for position,_ in tokens if sql[position:position+9].lower()=='read_csv(')
+            if not re.search(r'\bAS\s+SELECT\s+\*\s+FROM\s*$',sql[:start],re.I):continue
+            depth=0;end=None
+            for position,_ in tokens:
+                if position<start+8:continue
+                if sql[position:position+1]=='(':depth+=1
+                elif sql[position:position+1]==')':
+                    depth-=1
+                    if depth==0:end=position+1;break
+            if end is None or sql[end:].strip().strip(';'):continue
+            expression=sql[start:end]
+            options=set(re.findall(r'\(\s*"?([a-z_]+)"?\s*=',expression,re.I))
+            if options-{'all_varchar','header','delim','sample_size','ignore_errors','strict_mode','skip'}:continue
+            if re.search(r'ignore_errors"?\s*=\s*true|strict_mode"?\s*=\s*false',expression,re.I):continue
+            replacement=csv_recipe(conn,Path(path),expression)
+            if describe(conn,'SELECT * FROM '+identifier(name))!=describe(conn,replacement):continue
+            conn.execute(f'CREATE OR REPLACE VIEW {identifier(name)} AS {replacement}')
+        except Exception:
+            # Missing/changed files and user-defined readers retain their exact
+            # existing definitions rather than risking a semantic change.
+            continue
 
 
 def json_cell(value):
@@ -372,40 +425,64 @@ def perform(conn, action, payload, job_id, on_preview=None):
     raise ValueError('Unknown job action.')
 
 
-def worker(workspace, settings, job, sender, progress):
-    conn = None
-    started = time.perf_counter()
-    try:
-        if os.name == 'nt':
-            import ctypes
-            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
-        conn = create_connection(workspace, settings, job['id'])
-        # DuckDB progress is optional/approximate; absent progress remains indeterminate.
-        import threading
-        stopped = threading.Event()
+def serve_worker(workspace, channel, progress, cancelled):
+    """A warm native engine; interrupt active SQL without discarding its cache."""
+    import threading
+    import signal
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
+    conn=None
+    stop=threading.Event()
+    active=threading.Event()
+    worker_id='engine-'+str(os.getpid())
+    if os.name=='nt':
+        import ctypes
+        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(),0x4000)
 
-        def report():
-            while not stopped.wait(.3):
+    def monitor():
+        while not stop.wait(.025):
+            if conn is not None and active.is_set():
                 try:
-                    progress.value = conn.query_progress()
+                    if cancelled.is_set():conn.interrupt()
+                    progress.value=conn.query_progress()
                 except Exception:
                     pass
 
-        reporter = threading.Thread(target=report, daemon=True)
-        reporter.start()
-        try:
-            result = perform(conn, job['action'], job['payload'], job['id'],
-                             on_preview=lambda value: sender.send({'status': 'preview', 'preview': value}))
-        finally:
-            stopped.set()
-            reporter.join(1)
-        conn.close()
-        conn = None
-        result['elapsed_ms'] = round((time.perf_counter() - started) * 1000)
-        sender.send({'status': 'succeeded', 'result': result})
-    except BaseException as error:
-        sender.send({'status': 'failed', 'error': str(error)[:12000]})
+    thread=threading.Thread(target=monitor,daemon=True)
+    thread.start()
+    try:
+        while True:
+            try:
+                job=channel.recv()
+            except (EOFError,OSError):
+                break
+            if job is None:break
+            started=time.perf_counter()
+            active.set()
+            try:
+                settings=job['settings']
+                if conn is None:
+                    conn=create_connection(workspace,settings,worker_id)
+                    optimize_registered_csv(conn)
+                else:
+                    conn.execute(f"SET memory_limit='{int(settings['memory_mb'])}MB'")
+                    conn.execute(f"SET threads={int(settings['threads'])}")
+                    conn.execute(f"SET max_temp_directory_size='{int(settings['spill_gb'])}GB'")
+                conn.execute('SET preserve_insertion_order=true')
+                if cancelled.is_set():raise RuntimeError('Cancelled.')
+                result=perform(conn,job['action'],job['payload'],job['id'],
+                               on_preview=lambda value:channel.send({'status':'preview','preview':value}))
+                conn.execute('SELECT 1').fetchone()  # Release the completed result cursor.
+                result['elapsed_ms']=round((time.perf_counter()-started)*1000,2)
+                channel.send({'status':'succeeded','result':result})
+            except BaseException as error:
+                active.clear()
+                if conn is not None:
+                    try:conn.execute('ROLLBACK')
+                    except Exception:pass
+                channel.send({'status':'failed','error':str(error)[:12000]})
+            finally:
+                active.clear()
     finally:
-        if conn is not None:
-            conn.close()
-        sender.close()
+        active.clear();stop.set();thread.join(1)
+        if conn is not None:conn.close()
+        channel.close()
