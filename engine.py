@@ -320,7 +320,10 @@ def copy_to(conn, sql, target, options, job_id):
         partial.unlink(missing_ok=True)
 
 
-def perform(conn, action, payload, job_id, on_preview=None):
+def perform(conn, action, payload, job_id, on_preview=None, module_context=None):
+    if action in ('module_run', 'module_merge', 'module_schema'):
+        from module_runtime import dispatch
+        return dispatch(conn, action, payload, job_id, module_context or {})
     if action == 'catalog':
         import duckdb
         return {'catalog': catalog(conn), 'version': duckdb.__version__}
@@ -474,7 +477,9 @@ def serve_worker(workspace, channel, progress, cancelled):
                 conn.execute('SET preserve_insertion_order=true')
                 if cancelled.is_set():raise RuntimeError('Cancelled.')
                 result=perform(conn,job['action'],job['payload'],job['id'],
-                               on_preview=lambda value:channel.send({'status':'preview','preview':value}))
+                               on_preview=lambda value:channel.send({'status':'preview','preview':value}),
+                               module_context={'workspace':Path(workspace),'cancelled':cancelled,
+                                 'emit':lambda value:channel.send({'status':'activity','activity':value})})
                 conn.execute('SELECT 1').fetchone()  # Release the completed result cursor.
                 result['elapsed_ms']=round((time.perf_counter()-started)*1000,2)
                 channel.send({'status':'succeeded','result':result})

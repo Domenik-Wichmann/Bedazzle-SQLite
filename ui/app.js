@@ -84,6 +84,11 @@ async function runJob(action, payload = {}, onPreview = null) {
     for (;;) {
       await pause(previewShown||polls++>8?250:35);
       const job = await api('/api/jobs/' + submitted.id+(previewShown?'?preview=0':''));
+      if(job.activity){
+        $('job-label').textContent=job.activity.label;
+        $('job-detail').textContent=job.activity.detail||'';
+        window.dispatchEvent(new CustomEvent('bedazzle-job',{detail:job}));
+      }
       if(job.preview&&!previewShown&&onPreview){onPreview(job.preview);previewShown=true;$('job-label').textContent='Counting all matching results';$('job-detail').textContent='Your page is ready. The exact total is still being counted.';}
       $('job-time').textContent = `${Math.floor(Date.now()/1000 - job.created)}s`;
       if (job.progress !== null) $('job-progress').style.width = Math.min(100, job.progress) + '%';
@@ -612,6 +617,7 @@ async function init() {
   bind('save-query','click',saveDialog);bind('confirm-save','click',saveQuery);bind('show-schema','click',showSchema);bind('explain-query','click',explain);
   bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
   setupWorkbench();
+  setupModules();
   if(state.data.catalog.length)workArea();
   // Restore metadata only. Never re-run saved SQL or expensive scans on launch.
   if(state.data.active_job){

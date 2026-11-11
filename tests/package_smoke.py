@@ -24,6 +24,8 @@ def main():
     executable=extracted/'runtime'/'python'/'python.exe'
     version=subprocess.check_output([str(executable),'-c','import duckdb; print(duckdb.__version__)'],cwd=extracted,text=True).strip()
     assert version=='2.0.0'
+    pillow=subprocess.check_output([str(executable),'-c','import PIL; print(PIL.__version__)'],cwd=extracted,text=True).strip()
+    assert pillow=='13.0.0'
     print('PASS: bundled Python and native engine run from a path containing spaces and an apostrophe')
     workspace=extracted/'workspace'/'bedazzle'
 
@@ -76,6 +78,16 @@ def main():
         draft={'active':'draft-one','updated':time.time()*1000,'tabs':[{'id':'draft-one','name':'Persistent draft','sql':'SELECT 123 AS draft;'}]}
         request('/api/drafts',draft)
         request('/api/save',{'name':'Saved from extracted ZIP','sql':'SELECT 123'})
+        from tests.image_fixture import Images
+        images=Images()
+        try:
+            url=images.url+'/ok.png'
+            module=job('module_run',{'module':'image_checker','sql':f"SELECT i AS id,'{url}' AS url FROM range(3) t(i)",'options':{'url_columns':['url'],'allow_private':True,'retries':0}})
+            assert module['run']['summary']['checked_cells']==3 and images.hits['/ok.png']==1
+            enriched=job('module_merge',{'run_id':module['run']['id']})
+            assert job('query',{'sql':'SELECT count(*) FROM "'+enriched['name']+'"'})['rows']==[[3]]
+            print('PASS: packaged image decoder, manifest discovery, full result check and stable merge')
+        finally:images.close()
         request('/api/shutdown',{})
         process.wait(timeout=10)
         old_port=session['url']
@@ -85,6 +97,7 @@ def main():
         assert info['saved'][0]['name']=='Saved from extracted ZIP'
         assert info['catalog'][0]['name']==opened['name']
         assert info['settings']['profile']=='quiet'
+        assert any(run['id']==module['run']['id'] and run['status']=='completed' for run in request('/api/modules')['runs'])
         print('PASS: drafts, named queries, datasets, and settings survive a complete application restart')
         if info['active_job']:
             while not request('/api/jobs/'+info['active_job']).get('finished'):

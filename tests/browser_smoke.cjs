@@ -28,8 +28,8 @@ async function main() {
   };
   try {
     await page.goto(session.url+'/#'+session.token);
-    await page.locator('.dataset-item').first().waitFor();
-    await page.locator('.dataset-item').first().click();
+    await page.locator('.dataset-item[title$="catalogs.csv"]').first().waitFor();
+    await page.locator('.dataset-item[title$="catalogs.csv"]').first().click();
     await waitIdle();
     assert.equal(await page.locator('#result-table tbody tr').count(),6);
     console.log('PASS: dataset selection renders a native SQL preview');

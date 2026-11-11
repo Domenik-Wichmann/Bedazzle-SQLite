@@ -184,6 +184,14 @@ Counting a result can require a full scan, even when a preview was cheap. The en
 
 ## Exporting complete results
 
+The results header also has **Send to module**. The built-in Image URL Checker processes the entire current single-SELECT result, independently of page size. It freezes a Parquet snapshot with unique row identities, accepts one or more image URL columns plus optional expected width/height/bytes/MIME columns, and checks/reuses each unique URL string. Options include exact/minimum dimension rules, concurrency, byte/pixel/frame limits, per-URL deadlines, bounded retries, a separate whole-run limit and explicit private-network permission (off by default).
+
+The report gives HTTP/TLS/redirect information, actual raster verification/decoding, raw and EXIF-adjusted display dimensions, MIME/extension/length comparisons, image/frame metadata, exact-content hashes and exploratory image statistics. Unsupported formats or work stopped at a limit are marked limited/warning/fail, never silently passed as fully validated. Uniform-image and perceptual-hash results are heuristics, not proof of semantic correctness, subject identity, image quality or a placeholder. URL availability is a timestamped observation.
+
+**Open full report** creates normal SQL exploration; **Export report** exports every report row. **Merge back to results** creates a new enriched dataset using frozen row identities, with check fields prefixed by URL column. It does not overwrite the source CSV or join by a possibly duplicated URL. Original duplicate rows and row count are preserved. **Previous module runs** reopens reports and resumes interrupted checks using their original input/options and saved URL outcomes; a new run is needed to recheck completed URLs or change options. Runs and working copies stay local in the selected workspace. Network checks contact image servers and can take a long time; leave disk space for snapshots and reports.
+
+Modules are local trusted Python extensions with manifests. Add a module folder, restart, and it appears automatically. The running app appends the complete MODULES.md developer/user guide and installed manifests to these instructions, followed by the current workspace schema. Do not claim that a chat-only LLM can install code or access laptop URLs by itself.
+
 Click **Export full results**, choose a new destination and format, inspect the SQL, and click **Export all matching rows**. Supported formats:
 
 - Parquet: compressed analytics data, preserves types.

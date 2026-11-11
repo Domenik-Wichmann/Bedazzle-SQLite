@@ -81,6 +81,14 @@
     'library-search':'Filter saved/recent queries by their name or SQL text.',
     'download-instructions':'Choose Copy instructions or Download file for the complete LLM guide. It includes features, SQL examples and this workspace’s dataset names/column types, with no row data.',
     'workspace-nav':'Return to the SQL workspace. You can also run SQL without opening a file, for example SELECT 42.',
+    'module-menu':'Send the complete SELECT result to an installed module, or reopen a previous run. Page-size limits do not limit the module input.',
+    'module-start':'Freeze the full query result, then process it with the chosen module. Network checks use this laptop and their explicit limits.',
+    'module-cancel':'Stop this module run. Completed checks are kept in this workspace for Resume. A forced engine stop resets temporary SQL session state.',
+    'module-resume':'Continue the saved run using its original input snapshot, options and completed checks. Start a new run to change options or recheck finished URLs.',
+    'module-view-report':'Open every report row and field as a normal SQL dataset for filtering, grouping, charts or export.',
+    'module-export-report':'Export the complete report as CSV, TSV, Parquet, JSON or NDJSON. The small report preview does not limit the export.',
+    'module-merge':'Create a new enriched dataset using stable frozen row identities. Repeated URLs do not multiply rows. Original files are preserved.',
+    'module-merged-name':'Optional SQL name for the enriched dataset. Leave blank for an automatically available name. Earlier datasets remain available.',
     'quit':'Stop the local server and any running worker, save your SQL drafts, and leave persistent workspace data on disk.'
   };
   function make(tag,cls,text){const e=document.createElement(tag);e.className=cls;if(text)e.textContent=text;return e;}

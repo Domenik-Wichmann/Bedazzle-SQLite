@@ -4,6 +4,12 @@ Validated on Windows on 2026-11-11 using the bundled Python 3.14.10 and native D
 
 ## Automated checks
 
+The v1.3 module update adds a manifest-driven local extension contract, full-result snapshots, resumable disk-backed checks, typed Parquet reports, and stable-key non-destructive merges. Module tests cover actual PNG/JPEG/GIF decoding, EXIF orientation, MIME/extension mismatch, truncated/oversized bodies, redirects, gzip, retry, animation limits, blocked addresses/schemes/URL credentials, cancellation, resume and empty results. A second temporary text-length module verifies drop-in discovery and row-merge behavior; a broken manifest is isolated, and duplicate output keys block merge.
+
+A real isolated worker processed 1,234 input rows with the same URL, making one image request and producing 1,234 enriched rows. Browser checks selected two URL columns and per-row expectations, verified all 242 URL cells from 121 rows, exported the complete report, joined correct fields without row multiplication, reopened history, cancelled and resumed a run. Tests use deterministic loopback fixtures with explicit private-network permission. One public Python.org PNG was also checked successfully over certificate-verified TLS 1.3 (211×71, full decode); no user data was sent. This is not a large external-site throughput benchmark.
+
+The module update has **33 unit tests**, plus native API, browser and packaged-runtime checks. A clean Windows ZIP extracted into a path with spaces and an apostrophe loaded its bundled Pillow, discovered the module, checked/merged a sample, and preserved its report/run history over restart. Pillow 13.0.0 is checksum-pinned and bundled. Byte/pixel/frame/concurrency limits bound routine work, but native codecs, DNS and remote servers can still stall; the existing hard-cancel fallback can reset temporary SQL session state. No actual user 5 GB input or million-URL external crawl was benchmarked.
+
 The v1.2 workspace/layout update adds:
 
 - A 1,500-line SQL editor checked at a 1366×768 viewport: bounded card height, draggable divider, expand/switch/restore, and a collapsible sidebar.

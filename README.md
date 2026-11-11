@@ -6,7 +6,7 @@ My local tools for poking around big CSVs with SQL. Uses native DuckDB, with a s
 
 **Easiest:** [download the ready-to-run Windows ZIP](https://github.com/Domenik-Wichmann/Bedazzle-SQLite/releases/latest/download/Bedazzle-Windows.zip), extract **all** of it into a folder, and double-click **Start Bedazzle.cmd**. Python and DuckDB are included; no installation or account needed.
 
-**Editable source:** use GitHub’s green **Code → Download ZIP**, then extract it and run the same **Start Bedazzle.cmd**. This smaller download fetches portable Python and DuckDB into its own `runtime` folder on first launch (about 27 MB, internet required once). Both downloads are checksum-verified. Nothing is installed system-wide. Future launches work offline.
+**Editable source:** use GitHub’s green **Code → Download ZIP**, then extract it and run the same **Start Bedazzle.cmd**. This smaller download fetches portable Python, DuckDB and Pillow into its own `runtime` folder on first launch (about 34 MB, internet required once). Downloads are checksum-verified. Nothing is installed system-wide. Local-file work then works offline; image URL checks contact the selected image servers.
 
 The browser opens automatically. Keep the terminal open while using the app. Use **Quit** in the sidebar or Ctrl+C in the terminal to stop it.
 
@@ -36,6 +36,7 @@ If Python 3.12+ is already installed, `python workbench.py` also works. Developm
 - **Exact result totals:** the first page appears while the complete result is counted. You’ll see **Rows 1–100 of 12,456**, not a `100+` guess. Grouping and explicit SQL LIMITs affect that total. Counting can take time; cancelling it keeps the page already shown.
 - **Charts, column profiles and query plans:** use Chart, Data profile, Count dataset, and Explain when you need them. Explain shows a structured operation tree with planner estimates and details, an optional raw JSON view, and its own expand button. It does not run the query.
 - **Export full results:** CSV, TSV, Parquet, JSON or NDJSON. Streams every matching result row to disk, not just the visible page. A LIMIT in the SQL still applies.
+- **Send to module → Image URL Checker:** beside Export, send the complete SELECT to a reusable module. Choose multiple URL columns, optional expected width/height/bytes/MIME columns, and limits. It checks HTTP/TLS/redirects, downloads and actually verifies/decodes supported images, reports dimensions/animation/metadata/type mismatches and image statistics, deduplicates repeated URLs, and saves progress for Resume. Open/export the full report, or **Merge back to results** to create an enriched dataset with every original row preserved. Original files are kept intact. Private-network URLs are off by default; unsupported/incomplete checks are explicit. See [module details and how to add your own](MODULES.md).
 - **Tips off/on:** the optional little information badges explain controls. Off by default. Reduced-motion preferences disable moving glitter/shimmer.
 - **Agent instructions:** opens a card with **Copy instructions** and **Download file**. Both give the complete guide with SQL examples, feature explanations, and current dataset/column names. No row values or full source paths are included. Paste it into an LLM when asking for help.
 
@@ -68,6 +69,8 @@ Rows per page offers **100, 250, 500, 1,000, 5,000, 10,000, 50,000, 100,000, 250
 
 Your initial workspace lives under `workspace/bedazzle`. An existing older workspace is reused in place so earlier data is preserved. The workspace registry is `workspaces.json` inside that initial workspace; additional workspaces have their own folders under its `workspaces/` directory. Files opened directly stay in their original location; converted working copies default to the selected workspace's `imports/` folder. These folders and `runtime` are ignored by Git; the source/release packages exclude your datasets, queries, tokens and history.
 
+Module runs keep frozen Parquet inputs, a disk-backed queue and report Parquet files under the selected workspace's `modules/runs/<id>/`. Leave room for these working files. The module menu reopens previous reports and unfinished runs. Image bytes are discarded after inspection. Checks are observations at a particular time; URLs can change, require logins, block automated clients, or show valid but incorrect content. Pixel/animation limits and heuristics do not prove image quality or intended subject matter.
+
 The app binds to `127.0.0.1` and uses a random session token. Its UI has no external fonts/scripts, analytics, AI service or cloud dependency. SQL you choose to run can still write local files, access remote data or install extensions with your account’s permissions.
 
 The engine connection stays open between operations, so temporary tables, variables and ATTACH connections can be used across Run clicks while the app stays open. Ordinary tables/views survive app restarts. Restarting the app or recovering a hard-stopped worker resets temporary/session state. Cancel or a failed operation rolls back an open transaction; already committed statements remain committed. Pages/exports rerun SQL; external changes or nondeterministic queries can change their results.
@@ -82,6 +85,8 @@ The Done effect is a small, transparent, click-through animation lasting about 1
 - `ui/bedazzle.js` / `ui/bedazzle.css`: optional explanations, compact layout and small celebrations.
 - `ui/workbench.js` / `ui/workbench.css`: split/focused layouts, scrolling result windows, workspace chooser and query-plan tree.
 - `workspaces.py` / `repository.py`: separate local workspaces and conservative Git updates.
+- `module_runtime.py` / `modules/`: manifest discovery, validated options, resumable frozen inputs, typed reports and stable-key joins; first-party Image URL Checker.
+- `MODULES.md`: the local module contract and a working example for adding modules without changing the header or server routes.
 - `bootstrap.py` / `Start Bedazzle.cmd`: pinned, local-only dependency setup.
 - `AGENT_INSTRUCTIONS.md`: the downloadable base guide.
 

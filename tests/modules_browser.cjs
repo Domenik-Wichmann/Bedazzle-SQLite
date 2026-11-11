@@ -1,0 +1,44 @@
+const fs=require('fs'),path=require('path'),assert=require('assert/strict');
+process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');
+const {chromium}=require('../.test-tools/node_modules/playwright');
+const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json'));
+const fixture=JSON.parse(fs.readFileSync('workspace/module-smoke-fixture.json'));
+(async()=>{
+ const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:1440,height:960}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ const idle=async()=>{await page.locator('#job-strip').waitFor({state:'hidden',timeout:60000});await page.waitForTimeout(150);};
+ const query=async sql=>{await page.locator('#workspace-nav').click();await page.locator('#sql-editor').fill(sql);await page.locator('#run-query').click();await idle();};
+ try{
+  await page.goto(session.url+'/#'+session.token);await page.locator('#module-menu option[value="image_checker"]').waitFor({state:'attached'});
+  const base=fixture.url;
+  await query(`SELECT i AS id,'${base}/ok.png' AS image,CASE WHEN i%2=0 THEN '${base}/missing' ELSE '${base}/wrong.jpg' END AS thumbnail,CASE WHEN i=7 THEN 31 ELSE 32 END AS wanted FROM range(121) t(i) ORDER BY i;`);
+  await page.locator('#module-menu').selectOption('image_checker');await page.locator('#module-option-url_columns').waitFor();
+  await page.locator('#module-option-url_columns').selectOption(['image','thumbnail']);await page.locator('#module-option-expected_width').selectOption('wanted');
+  await page.locator('.module-limits summary').click();await page.locator('#module-option-allow_private').check();
+  await page.locator('#module-start').click();await page.waitForFunction(()=>!moduleState.busy&&moduleState.run?.status==='completed',{},{timeout:60000});
+  assert.equal(await page.locator('#module-report-preview tbody tr').count(),20);
+  assert((await page.locator('#module-status').textContent()).includes('242 input URL cells'));
+  assert((await page.locator('#module-status').textContent()).includes('3 unique URLs'));
+  assert.equal((await page.locator('.module-stat.fail strong').textContent()).trim(),'63');
+  console.log('PASS: module chooser, multiple URL columns, row expectations, full 242-cell report and deduplication');
+  const output=path.resolve(session.workspace,'browser-image-report-'+Date.now()+'.csv');
+  await page.locator('#module-export-report').click();await page.locator('#export-format').selectOption('csv');await page.locator('#export-path').fill(output);await page.locator('#confirm-export').click();await idle();
+  assert(fs.existsSync(output));assert.equal(fs.readFileSync(output,'utf8').trim().split('\n').length,243);
+  const merged='Browser image merge '+Date.now();await page.locator('#module-merged-name').fill(merged);await page.locator('#module-merge').click();await idle();
+  await page.waitForFunction(()=>!state.busy&&state.result?.total_rows===121);
+  assert((await page.locator('#workspace-subtitle').textContent()).includes(merged));
+  await query(`SELECT count(*) AS n FROM "${merged}" WHERE "thumbnail__verdict"='fail';`);
+  assert.equal((await page.locator('#result-table tbody tr td').nth(1).textContent()).trim(),'62');
+  console.log('PASS: full report export, non-destructive enriched dataset and correct merged row identities');
+  await page.locator('#module-menu').selectOption('history');await page.locator('#module-history-list .module-run').first().getByRole('button').click();
+  await page.locator('#module-outcome').waitFor();await idle();await page.locator('#module-dialog-close').click();
+  await query(`SELECT '${base}/slow' AS image;`);
+  await page.locator('#module-menu').selectOption('image_checker');await page.locator('#module-option-url_columns').waitFor();
+  await page.locator('.module-limits summary').click();await page.locator('#module-option-allow_private').check();await page.locator('#module-start').click();
+  await page.waitForFunction(()=>moduleState.busy&&moduleState.run?.id);
+  await page.locator('#module-cancel').click();await page.waitForFunction(()=>!moduleState.busy,{},{timeout:15000});
+  await page.locator('#module-resume').waitFor();await page.locator('#module-resume').click();await page.waitForFunction(()=>!moduleState.busy&&moduleState.run?.status==='completed',{},{timeout:30000});
+  await page.screenshot({path:'workspace/verification/image-module.png'});
+  console.log('PASS: workspace module history, cancel and resume through the UI');assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});
