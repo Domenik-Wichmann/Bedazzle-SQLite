@@ -86,6 +86,29 @@ def main():
         assert info['catalog'][0]['name']==opened['name']
         assert info['settings']['profile']=='quiet'
         print('PASS: drafts, named queries, datasets, and settings survive a complete application restart')
+        if info['active_job']:
+            while not request('/api/jobs/'+info['active_job']).get('finished'):
+                time.sleep(.05)
+        request('/api/workspace',{'name':'Separate packaged workspace'})
+        secondary=request('/api/bootstrap')
+        key=secondary['workspaces']['selected']
+        assert key!='primary' and secondary['catalog']==[] and secondary['saved']==[]
+        request('/api/settings',{'memory_mb':256,'threads':1,'spill_gb':1,'timeout':30,'profile':'quiet','default_page_size':1000000})
+        job('query',{'sql':'CREATE TABLE separate AS SELECT 987 AS x;'})
+        request('/api/shutdown',{})
+        process.wait(timeout=10)
+        process,session=launch()
+        info=request('/api/bootstrap')
+        assert info['workspaces']['selected']==key and info['settings']['default_page_size']==1000000
+        if info['active_job']:
+            while not request('/api/jobs/'+info['active_job']).get('finished'):
+                time.sleep(.05)
+        assert job('query',{'sql':'SELECT * FROM separate'})['rows']==[[987]]
+        request('/api/workspace',{'id':'primary'})
+        restored=request('/api/bootstrap')
+        assert restored['drafts']==draft and restored['saved'][0]['name']=='Saved from extracted ZIP'
+        assert restored['catalog'][0]['name']==opened['name']
+        print('PASS: selected workspace, separate tables and million-row default survive restart; original workspace remains intact')
     finally:
         try:
             request('/api/shutdown',{})

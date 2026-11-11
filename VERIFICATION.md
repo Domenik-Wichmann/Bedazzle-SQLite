@@ -4,6 +4,19 @@ Validated on Windows on 2026-11-11 using the bundled Python 3.14.10 and native D
 
 ## Automated checks
 
+The v1.2 workspace/layout update adds:
+
+- A 1,500-line SQL editor checked at a 1366×768 viewport: bounded card height, draggable divider, expand/switch/restore, and a collapsible sidebar.
+- A 1,200,123-row ordered query browsed with a million-row logical page: exact total, at most 500 rendered records plus spacers, continuous row anchoring across batch changes, middle/end navigation, and next/previous logical pages.
+- Separate workspaces with independent persistent tables, datasets, SQL drafts and default page sizes; registry selection survives reopening. Invalid workspace identifiers and duplicate names are rejected.
+- Structured JSON query-plan cards and an expanded details dialog; complete instructions copied to the browser clipboard and downloaded with the current schema.
+- Conservative Git linking tested against a local upstream: existing edited source and private files survive adoption; updates refuse local edits; a clean fast-forward updates source and leaves workspace data intact. Tests do not push to any repository.
+- **27 unit tests** pass. Browser regression checks cover imports/conversion, joins/group expansion, sorting/paging, charts/profiling, saved-query persistence, full exports, cancellation, optional help, and reduced motion.
+
+The packaged ZIP was extracted to a path containing spaces and an apostrophe. Its bundled runtime imported the sample; a complete app restart preserved the chosen secondary workspace, its table and million-row default. Switching back recovered the original datasets, named queries and SQL drafts.
+
+Large-page browsing bounds the rendered window and response size, not total engine memory. Deep OFFSET queries still depend on SQL shape and source format. There is no claim that a million-row page makes every query fast.
+
 Engine/unit checks cover:
 
 - Text-preserved CSV import: leading-zero identifiers and apostrophes in paths.

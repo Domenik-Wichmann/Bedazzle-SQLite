@@ -15,7 +15,7 @@ If you are a chat-only LLM, write SQL and explain the UI steps for me; you do no
 - The left sidebar lists the available datasets. Clicking one opens a SQL preview in a tab.
 - The name in the sidebar is the identifier to put after `FROM`. It can differ from the source filename.
 - Click **Columns** to inspect column names and DuckDB types; click a name to insert its quoted identifier.
-- A guide downloaded from the running app appends the current dataset names and column types below. It does not include row values or full file paths.
+- Agent instructions opens a choice to copy the entire guide to the clipboard or download the Markdown file. Both append the selected workspace's current dataset names and column types below. They do not include row values or full file paths.
 - If the guide has no schema section, ask me for the dataset name and relevant columns, or explain how to find them. Do not invent the schema.
 - Quote identifiers with double quotes. Escape an embedded double quote by doubling it: `"A ""quoted"" name"`.
 - Text literals use single quotes, with embedded quotes doubled: `'O''Brien'`.
@@ -158,7 +158,10 @@ Click a grouped row’s arrow to expand a bounded preview of its underlying reco
 
 ## Results and exact totals
 
-- Default page size: 100 rows; optional 250 or 500.
+Use the corner expand icon on the editor or results to focus that panel. Compact Editor / Results tabs switch between them; the restore icon or Escape returns to the split. Drag the divider to resize both cards within the screen. Long SQL scrolls inside its editor and does not enlarge the card. The top-left menu button hides the sidebar; Open file and Import as Parquet are below the sidebar brand.
+
+- Initial default page size: 100 rows. Available sizes: 100, 250, 500, 1,000, 5,000, 10,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000. Performance & settings saves the default independently for each workspace.
+- Pages above 500 use a scrolling window, not a million-row HTML table or a full Python fetch. Each response renders at most 500 records, further bounded by cell/byte limits. Scroll within a large logical page; next/previous moves by the selected logical page size. The footer distinguishes the currently loaded rows from the page range. Deep windows rerun SELECT with OFFSET and can take longer. Use ORDER BY for stable results.
 - Each response is also bounded to about 1 MB of values, 10,000 cells, 120 displayed columns and 4,096 preview characters per text cell. A wide page can contain fewer rows.
 - These limits affect previews, not the number of matching rows or export size.
 - The first page can appear with **Counting…** while the complete SELECT result is counted in the same worker/connection. Once ready, the UI shows an exact total, such as **Rows 1–100 of 12,456**.
@@ -173,7 +176,9 @@ Counting a result can require a full scan, even when a preview was cheap. The en
 
 ## Charts and profiling
 
-**Chart** shows a bar chart using selectable label and numeric-value columns. It uses at most the first 30 rows of the current result page. Aggregate in SQL for a whole-dataset chart.
+**Chart** shows a bar chart using selectable label and numeric-value columns. It uses at most the first 30 rows of the currently loaded result window. Aggregate in SQL for a whole-dataset chart.
+
+**Explain** shows DuckDB's physical operation tree as connected, readable cards with extra information and estimated cardinalities. Read it from leaf scans toward the root result. It does not execute the SELECT or report measured timings. Expand the dialog for room, or open Raw plan JSON. A confusing estimate is not proof of a measured bottleneck.
 
 **Data profile → Profile dataset** scans the selected dataset for column-level summary statistics, including types, missing values, distinct estimates, ranges and numeric statistics where applicable. It is explicit because a full profile can be expensive. Do not describe estimated distinct values as exact counts.
 
@@ -207,6 +212,8 @@ Prefer SSD storage, selected columns, early filters, Parquet for repeated analys
 
 Ordinary DuckDB tables/views, dataset metadata, named queries, history, settings and drafts persist in the workspace. Existing installations keep their earlier workspace folder. Imported file views reference the original file path; moving the file requires reopening it from its new location.
 
+The sidebar workspace chooser switches collections; its + button creates a named workspace. Each has separate datasets, database tables, saved queries, history, SQL drafts and performance/page-size settings. Switching saves drafts first and requires an idle engine. It closes the old connection: temporary tables, variables and ATTACH session state are lost, while ordinary tables and saved work remain. The selected workspace is remembered for the next app launch. Workspaces live locally under the initial workspace folder; the registry is workspaces.json and additional databases live under workspaces/<id>/. No dataset is automatically copied between workspaces. To combine data, open the required files in the same workspace and JOIN or UNION them.
+
 The connection stays open between Run clicks. Temporary tables, session variables, transactions and ATTACH connections can span operations during a healthy app session. App/worker restarts reset that session state. Errors and cancellation roll back any open transaction; already committed writes remain. Use ordinary tables for work that must survive restarts:
 
 ```sql
@@ -225,8 +232,10 @@ Successful queries/conversions/exports show a tiny transparent lower-right anima
 
 The GitHub release ZIP is a ready-to-run Windows folder: extract all, then double-click **Start Bedazzle.cmd**. **Code → Download ZIP** downloads the editable source; the same launcher obtains the pinned runtime on first launch, then works offline. A Git clone is best if changes should be committed and pushed later.
 
+Performance & settings includes Clone / connect this folder, Check updates and Apply update. Git for Windows must already be installed and on PATH. Connecting initializes Git in the current app folder, fetches the fixed Bedazzle upstream and connects its tracking branch without overwriting working files. Local differences remain visible as edits. Updating fetches first and only permits a clean fast-forward merge; local edits, divergent history or colliding untracked files stop it. No force reset, cleaning, push, background update or user-data upload occurs. Restart the app after an update. These controls manage application source, not the user's datasets. A different existing Git origin must be managed with the user's Git tools.
+
 The default UI has no external JavaScript/fonts, uploads or telemetry. It binds to loopback and uses a random session token. SQL that explicitly accesses a remote address or installs an extension can use the network. Do not expose the local session token, change server binding to a public interface, or treat the engine as an OS sandbox.
 
-Source areas: `engine.py` for native data operations; `app_server.py` for jobs/local API; `ui/app.js` for the workspace; `ui/bedazzle.js` for optional help and effects; `ui/bedazzle.css` for the compact personal style; `launcher.py` for startup; `bootstrap.py` for pinned dependency setup.
+Source areas: `engine.py` for native data operations; `app_server.py` for jobs/local API; `workspaces.py` for the registry; `repository.py` for conservative Git operations; `ui/app.js` for the editor/results; `ui/workbench.js` and `ui/workbench.css` for screen layouts, scrolling windows, workspace controls and plan trees; `ui/bedazzle.js` for optional help and effects; `launcher.py` for startup; `bootstrap.py` for pinned dependency setup.
 
 When helping me, state what the SQL counts or changes, use the actual schema, preserve source data unless I ask to modify it, and distinguish measured behavior from estimates.

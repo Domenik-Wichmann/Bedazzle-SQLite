@@ -114,8 +114,9 @@ class Jobs:
         self.watcher=None
 
     def settings(self):
-        return self.store.get('settings', {'profile': 'balanced', 'memory_mb': 0, 'threads': 0,
-                                          'spill_gb': 10, 'timeout': 300})
+        return {'profile': 'balanced', 'memory_mb': 0, 'threads': 0,
+                'spill_gb': 10, 'timeout': 300, 'default_page_size': 100,
+                **self.store.get('settings', {})}
 
     def effective_settings(self):
         saved, hw = self.settings(), hardware()
@@ -137,6 +138,9 @@ class Jobs:
         if self.active_id:
             raise ValueError('Wait for the current operation or cancel it before changing settings.')
         clean = {'profile': value.get('profile', 'balanced')}
+        clean['default_page_size'] = int(value.get('default_page_size', self.settings()['default_page_size']))
+        if clean['default_page_size'] not in (100, 250, 500, 1000, 5000, 10000, 50000, 100000, 250000, 500000, 1000000):
+            raise ValueError('Choose one of the available rows-per-page sizes.')
         if clean['profile'] not in ('balanced', 'quiet'):
             raise ValueError('Choose Balanced or Quiet.')
         for key, low, high, default in [('memory_mb', 0, 16384, 0), ('threads', 0, 32, 0),
@@ -269,7 +273,7 @@ class Jobs:
                         self.count_cache[job['_count_key']] = (result['total_rows'],time.time())
                         if len(self.count_cache)>20:
                             self.count_cache.pop(next(iter(self.count_cache)))
-                    if job['action'] == 'query' and not job['payload'].get('offset'):
+                    if job['action'] == 'query' and not job['payload'].get('offset') and not job['payload'].get('window'):
                         self.store.remember(job['payload']['sql'], result['elapsed_ms'])
                 if self.active_id == job['id']:
                     self.active_id = None
@@ -331,7 +335,12 @@ class Server(ThreadingHTTPServer):
 
     def __init__(self, address, workspace):
         super().__init__(address, Handler)
-        self.jobs = Jobs(workspace)
+        from workspaces import Workspaces
+        from repository import Repository
+        self.workspaces = Workspaces(workspace)
+        self.workspace_lock = threading.Lock()
+        self.jobs = Jobs(self.workspaces.path())
+        self.repository = Repository(ROOT)
         self.token = secrets.token_urlsafe(32)
         self.picker_lock = threading.Lock()
         self.started = time.time()
@@ -343,7 +352,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         if len(args) > 1 and str(args[1]).startswith(('4', '5')):
-            print(fmt % args, file=sys.stderr)
+            try:
+                print(fmt % args, file=sys.stderr)
+            except (OSError, ValueError):
+                pass  # A background launch may no longer have an open terminal.
 
     def reply(self, status, data, mime='application/json; charset=utf-8'):
         raw = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8') if not isinstance(data, bytes) else data
@@ -373,6 +385,10 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get('X-Workbench-Token', ''), self.server.token):
                 self.reply(403, {'error': 'Open the workbench using the link printed in its terminal.'})
                 return False
+            expected = self.headers.get('X-Workbench-Workspace')
+            if expected and expected != self.server.workspaces.data['selected']:
+                self.reply(409, {'error': 'The workspace changed in another tab. Reload this tab before continuing.'})
+                return False
         return True
 
     def do_GET(self):
@@ -381,8 +397,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == '/api/bootstrap':
-                return self.reply(200, {**self.server.jobs.bootstrap(), 'drafts': self.server.jobs.store.get('drafts'),
-                                        'demo_path': str(ROOT / 'examples' / 'catalogs.csv')})
+                with self.server.workspace_lock:
+                    return self.reply(200, {**self.server.jobs.bootstrap(), 'drafts': self.server.jobs.store.get('drafts'),
+                                            'workspaces': self.server.workspaces.data,
+                                            'demo_path': str(ROOT / 'examples' / 'catalogs.csv')})
+            if path == '/api/repository':
+                return self.reply(200, self.server.repository.status())
             if path.startswith('/api/jobs/'):
                 return self.reply(200, self.server.jobs.status(path.rsplit('/', 1)[-1], include_preview='preview=0' not in self.path))
             if path == '/api/agent-instructions':
@@ -398,6 +418,8 @@ class Handler(BaseHTTPRequestHandler):
                       '/workspace.css': ('workspace.css', 'text/css; charset=utf-8'),
                       '/bedazzle.js': ('bedazzle.js', 'text/javascript; charset=utf-8'),
                       '/bedazzle.css': ('bedazzle.css', 'text/css; charset=utf-8'),
+                      '/workbench.js': ('workbench.js', 'text/javascript; charset=utf-8'),
+                      '/workbench.css': ('workbench.css', 'text/css; charset=utf-8'),
                       '/favicon.svg': ('favicon.svg', 'image/svg+xml')}
             if path in assets:
                 name, mime = assets[path]
@@ -419,6 +441,23 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(value, dict):
                 raise ValueError('Expected an object.')
             path, jobs = urlparse(self.path).path, self.server.jobs
+            expected = self.headers.get('X-Workbench-Workspace')
+            if expected and expected != self.server.workspaces.data['selected']:
+                return self.reply(409, {'error': 'The workspace changed in another tab. Reload this tab before continuing.'})
+            if path == '/api/workspace':
+                with self.server.workspace_lock:
+                    if jobs.active_id:
+                        raise ValueError('Wait for the current operation or cancel it before switching workspaces.')
+                    key = self.server.workspaces.create(value['name']) if 'name' in value else value['id']
+                    self.server.workspaces.path(key)
+                    jobs.close()
+                    self.server.workspaces.select(key)
+                    self.server.jobs = Jobs(self.server.workspaces.path())
+                return self.reply(200, {'ok': True})
+            if path == '/api/repository':
+                if jobs.active_id:
+                    raise ValueError('Wait for the current query before changing application files.')
+                return self.reply(200, self.server.repository.action(value.get('action')))
             if path == '/api/startup':
                 startup, self.server.startup = self.server.startup, {'paths': [], 'convert': None}
                 return self.reply(200, startup)

@@ -67,13 +67,13 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
   assert.equal((await page.locator('#result-table tbody tr td').nth(1).textContent()).trim(),'6');
   console.log('PASS: custom import name, quoted dataset rename, and saved SQL compatibility alias');
 
-  const downloadEvent=page.waitForEvent('download');await page.locator('#download-instructions').click();
+  const downloadEvent=page.waitForEvent('download');await page.locator('#download-instructions').click();await page.locator('#save-instructions').click();
   const download=await downloadEvent;assert.equal(download.suggestedFilename(),'Bedazzle-Agent-Instructions.md');
   const chunks=[];for await(const chunk of await download.createReadStream())chunks.push(chunk);
   const guide=Buffer.concat(chunks).toString('utf8');
   fs.writeFileSync(path.resolve('workspace/verification/Bedazzle-Agent-'+Date.now()+'.md'),guide);
   assert(guide.includes(renamed.replaceAll('"','\\"')));assert(guide.includes('## Exporting complete results'));assert(!guide.includes(session.token));
-  console.log('PASS: downloadable full agent guide includes current schema without the session token');
+  console.log('PASS: downloadable full agent guide includes current schema without the session token');await page.locator('#instructions-dialog .close-button').click();
 
   await page.locator('#sql-editor').fill('SELECT a.i FROM range(1000000) a(i),range(1000000) b(i) WHERE (a.i*b.i)%7=0;');
   await page.locator('#run-query').click();

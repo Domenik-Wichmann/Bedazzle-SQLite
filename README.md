@@ -20,22 +20,24 @@ cd Bedazzle-SQLite
 .\Start Bedazzle.cmd
 ```
 
-Edit the source in that folder. Refresh the browser after HTML/CSS/JavaScript changes; stop and restart after Python changes. Commit/push with Git or GitHub Desktop when you want to save your changes back to GitHub. Download ZIP gives you editable files too, but does not set up a Git connection.
+Edit the source in that folder. Refresh the browser after HTML/CSS/JavaScript changes; stop and restart after Python changes. Commit/push with Git or GitHub Desktop when you want to save your changes back to GitHub. A ZIP also contains editable files. In **Performance & settings → Clone / connect this folder**, connect the extracted folder to GitHub without moving or overwriting those files. Git for Windows must be installed first. **Check updates** fetches the upstream version; **Apply update** accepts only a clean, fast-forward update, then asks you to restart. Local edits, divergent commits and untracked-file collisions block updates. These controls never push or upload your files.
 
 If Python 3.12+ is already installed, `python workbench.py` also works. Development dependencies are in `requirements.txt`; use a virtual environment if desired. The release targets 64-bit Windows 10/11. The repository name is Bedazzle-SQLite; its query engine is **DuckDB 2.0**, so use DuckDB SQL.
 
 ## Using it
 
-- **Open file:** choose CSV, TSV, Parquet, JSON, JSONL or NDJSON; preview how it will be read; optionally give it your own SQL name.
+- **Open file:** below the Bedazzle name in the sidebar, choose CSV, TSV, Parquet, JSON, JSONL or NDJSON; preview how it will be read; optionally give it your own SQL name.
+- **Workspaces:** use the sidebar chooser and **+** to create separate collections of datasets, saved queries, history, drafts and settings. Switching saves your current drafts first. Workspace switches close the engine connection, so temporary tables and session variables do not survive the switch; ordinary tables and saved work do.
+- **Screen layout:** drag the divider to resize the actual editor/results cards. The line-number gutter scrolls with the editor instead of stretching the card. Each card has a corner expand/restore button; compact **Editor / Results** tabs switch views while expanded. Escape restores the split. The top-left menu button collapses the sidebar.
 - **Import as Parquet:** create a ZSTD-compressed working copy and open it automatically. The original stays intact. Existing output filenames are protected.
 - **Rename:** click the pencil beside a dataset or its name in the top header. Spaces are allowed. Earlier SQL names keep working as hidden aliases.
 - **SQL tabs:** Ctrl+Enter runs all or selected SQL; Ctrl+Space suggests names; Ctrl+S saves a query. Drafts, history and named queries are kept in your workspace.
 - **Visual explorer:** filter and group by one or more columns, pick a measure, expand grouped records, or inspect the generated SQL.
 - **Exact result totals:** the first page appears while the complete result is counted. You’ll see **Rows 1–100 of 12,456**, not a `100+` guess. Grouping and explicit SQL LIMITs affect that total. Counting can take time; cancelling it keeps the page already shown.
-- **Charts, column profiles and query plans:** use Chart, Data profile, Count dataset, and Explain when you need them.
+- **Charts, column profiles and query plans:** use Chart, Data profile, Count dataset, and Explain when you need them. Explain shows a structured operation tree with planner estimates and details, an optional raw JSON view, and its own expand button. It does not run the query.
 - **Export full results:** CSV, TSV, Parquet, JSON or NDJSON. Streams every matching result row to disk, not just the visible page. A LIMIT in the SQL still applies.
 - **Tips off/on:** the optional little information badges explain controls. Off by default. Reduced-motion preferences disable moving glitter/shimmer.
-- **Agent instructions:** download a detailed Markdown guide with SQL examples, feature explanations, and current dataset/column names. No row values or full source paths are included. Hand that file to an LLM when asking for help.
+- **Agent instructions:** opens a card with **Copy instructions** and **Download file**. Both give the complete guide with SQL examples, feature explanations, and current dataset/column names. No row values or full source paths are included. Paste it into an LLM when asking for help.
 
 For example, if the sidebar shows a dataset named `My catalogs`:
 
@@ -60,11 +62,11 @@ Bedazzle keeps a warm engine instead of starting Python/DuckDB for every query. 
 
 The buffer budget is **not a hard cap on total process RAM**. Heavy work runs in a separate lower-priority engine process that stays warm between queries. Cancel/timeouts interrupt the active query; a stuck or crashed worker is restarted automatically. This reduces repeated startup and cache loss without promising every query will avoid slowdown. No real user-provided 5 GB file has been benchmarked here.
 
-The UI normally shows 100 rows per page, optionally 250/500. Responses are additionally bounded to about 1 MB of values, 10,000 cells, 120 displayed columns and 4,096 preview characters per text cell. Full exports preserve complete values and all selected columns. There is no fixed 100,000-row total browsing limit. Deep OFFSET pages can be slower. Exact counts are briefly reused for navigation while source-file/database stamps are unchanged; clicking Run requests a fresh count.
+Rows per page offers **100, 250, 500, 1,000, 5,000, 10,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000**. Set the workspace default in Performance & settings. Pages above 500 rows use a scrolling window: the page range can cover a million rows while the browser loads at most 500 at a time. Scroll to browse that page, or use the arrows to change pages. Responses are additionally bounded to about 1 MB of values, 10,000 cells, 120 displayed columns and 4,096 preview characters per text cell, so wide results use smaller windows. Full exports preserve complete values and all selected columns. There is no fixed total browsing limit. Deep OFFSET windows can be slower; add ORDER BY for stable paging. Scripts with setup statements cannot be paged: run their final SELECT separately. Exact counts are briefly reused for navigation while source-file/database stamps are unchanged; clicking Run requests a fresh count.
 
 ## Workspace and privacy
 
-Your files, saved SQL, settings and local database live under `workspace/bedazzle`. An existing older workspace is reused in place so earlier data is preserved. These folders and `runtime` are ignored by Git; the source/release packages exclude your datasets, queries, tokens and history.
+Your initial workspace lives under `workspace/bedazzle`. An existing older workspace is reused in place so earlier data is preserved. The workspace registry is `workspaces.json` inside that initial workspace; additional workspaces have their own folders under its `workspaces/` directory. Files opened directly stay in their original location; converted working copies default to the selected workspace's `imports/` folder. These folders and `runtime` are ignored by Git; the source/release packages exclude your datasets, queries, tokens and history.
 
 The app binds to `127.0.0.1` and uses a random session token. Its UI has no external fonts/scripts, analytics, AI service or cloud dependency. SQL you choose to run can still write local files, access remote data or install extensions with your account’s permissions.
 
@@ -78,6 +80,8 @@ The Done effect is a small, transparent, click-through animation lasting about 1
 - `app_server.py`: local API, isolated jobs, cancellation and settings.
 - `ui/app.js`: editor, results and visual exploration.
 - `ui/bedazzle.js` / `ui/bedazzle.css`: optional explanations, compact layout and small celebrations.
+- `ui/workbench.js` / `ui/workbench.css`: split/focused layouts, scrolling result windows, workspace chooser and query-plan tree.
+- `workspaces.py` / `repository.py`: separate local workspaces and conservative Git updates.
 - `bootstrap.py` / `Start Bedazzle.cmd`: pinned, local-only dependency setup.
 - `AGENT_INSTRUCTIONS.md`: the downloadable base guide.
 

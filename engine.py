@@ -343,8 +343,10 @@ def perform(conn, action, payload, job_id, on_preview=None):
         result['catalog'] = catalog(conn)
         return result
     if action == 'query':
-        size = max(10, min(500, int(payload.get('size', 100))))
+        logical_size = max(10, min(1000000, int(payload.get('size', 100))))
+        size = min(500, logical_size)
         offset = max(0, min(10**12, int(payload.get('offset', 0))))
+        window = max(0, min(logical_size - 1, int(payload.get('window', 0))))
         if payload.get('sort'):
             items=conn.extract_statements(payload['sql'])
             if len(items)!=1 or str(items[0].type).split('.')[-1]!='SELECT':
@@ -354,13 +356,14 @@ def perform(conn, action, payload, job_id, on_preview=None):
             if direction not in ('ASC','DESC'):
                 raise ValueError('Invalid sort direction.')
             payload={**payload,'sql':f'SELECT * FROM ({query_body(items[0].query)}) AS sorted_results ORDER BY {identifier(column)} {direction}'}
-        result = page(conn, payload['sql'], offset, size)
+        result = page(conn, payload['sql'], offset + window, min(size, logical_size - window))
+        result.update(page_start=offset, logical_size=logical_size)
         statements = conn.extract_statements(payload['sql'])
         if result['selectable'] and payload.get('exact_total', True):
             if payload.get('_known_total') is not None:
                 result.update(total_rows=int(payload['_known_total']), total_status='exact')
-            elif not result['has_more'] and (result['rows'] or not offset):
-                result.update(total_rows=offset + len(result['rows']), total_status='exact')
+            elif not result['has_more'] and (result['rows'] or not result['offset']):
+                result.update(total_rows=result['offset'] + len(result['rows']), total_status='exact')
             else:
                 result['total_status'] = 'counting'
                 if on_preview:
@@ -421,7 +424,8 @@ def perform(conn, action, payload, job_id, on_preview=None):
         statements = conn.extract_statements(payload['sql'])
         if len(statements) != 1 or str(statements[0].type).split('.')[-1] != 'SELECT':
             raise ValueError('Explain one SELECT or PIVOT query at a time.')
-        return {'plan': '\n'.join(str(row[-1]) for row in conn.execute('EXPLAIN ' + statements[0].query).fetchall())}
+        plan = conn.execute('EXPLAIN (FORMAT JSON) ' + statements[0].query).fetchone()[-1]
+        return {'plan': plan, 'tree': json.loads(plan)}
     raise ValueError('Unknown job action.')
 
 

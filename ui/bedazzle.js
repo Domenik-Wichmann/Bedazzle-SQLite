@@ -45,7 +45,21 @@
     'confirm-export':'Stream the complete SELECT output directly to disk. The preview/page limit does not limit export rows or values.',
     'count-rows':'Count all records in the selected dataset. This is different from the total of your current filtered or grouped query.',
     'run-profile':'Scan the selected dataset for per-column types, NULLs, ranges and statistics. This can take time on a large CSV.',
-    'page-size':'Maximum rows requested for one result page. Wide or long-text results can have fewer rows to keep memory and rendering bounded.',
+    'page-size':'Choose the logical page size, up to a million rows. Large pages load a small scrolling window at a time; the footer shows the loaded rows and the logical page range. Wide values reduce each batch.',
+    'setting-page-size':'The default logical page size for this workspace. Large pages browse through bounded scrolling windows rather than loading all rows into RAM.',
+    'workspace-select':'Switch between separate collections of datasets, saved queries, history, drafts and settings. Switching saves drafts and closes the current engine session; temporary tables are not kept.',
+    'new-workspace':'Create another local workspace. Your current datasets and queries remain saved in their existing workspace.',
+    'new-workspace-name':'A name for this separate collection of data and queries. Workspace names must be unique.',
+    'create-workspace':'Create and switch to this workspace. No data is copied or removed from other workspaces.',
+    'toggle-sidebar':'Collapse or reopen the file and workspace sidebar to make more room for SQL and results.',
+    'expand-editor':'Focus the SQL editor. Editor / Results tabs switch panels while expanded. Restore or Escape returns to the split view.',
+    'expand-results':'Focus results. Editor / Results tabs switch panels while expanded. Restore or Escape returns to the split view.',
+    'expand-detail':'Expand this details or query-plan dialog to fill the window. Click again to restore its size.',
+    'copy-instructions':'Copy the entire guide, including this workspace’s schema, to your clipboard. Paste it into an LLM for SQL and feature help.',
+    'save-instructions':'Download the same complete guide as a Markdown file. It contains dataset names and column types, not row values.',
+    'repository-link':'Connect this current app folder to the Bedazzle GitHub source using installed Git. Working files are kept; differences remain local edits. This never uploads files.',
+    'repository-check':'Fetch the latest upstream source information. Your application files and workspace data are kept as they are.',
+    'repository-update':'Apply a clean fast-forward update. Local code edits and file collisions block it. Workspace data is preserved. Restart Bedazzle afterward.',
     'next-page':'Fetch the next page of this SQL result. Use ORDER BY for repeatable ordering. Deep pages can take longer to compute.',
     'previous-page':'Return to the previous page. The exact result total is separate from the number of visible rows.',
     'chart-label':'Which result column labels each bar. Charts show up to 30 records from this result page.',
@@ -65,7 +79,7 @@
     'library-nav':'Open saved named SQL queries. Loading one changes the editor; it does not execute SQL.',
     'history-nav':'See recent successful queries in this workspace and load one back into the editor.',
     'library-search':'Filter saved/recent queries by their name or SQL text.',
-    'download-instructions':'Download a Markdown guide for an LLM or coding agent. It includes Bedazzle’s features, SQL examples and your current dataset names/column types, with no row data.',
+    'download-instructions':'Choose Copy instructions or Download file for the complete LLM guide. It includes features, SQL examples and this workspace’s dataset names/column types, with no row data.',
     'workspace-nav':'Return to the SQL workspace. You can also run SQL without opening a file, for example SELECT 42.',
     'quit':'Stop the local server and any running worker, save your SQL drafts, and leave persistent workspace data on disk.'
   };
@@ -145,14 +159,8 @@
       (control.closest('dialog[open]')||document.body).append(star);setTimeout(()=>star.remove(),800);
     }
   }
-  async function downloadInstructions(){
-    const response=await fetch('/api/agent-instructions',{headers:{'X-Workbench-Token':sessionStorage.getItem('fieldwork-token')||''}});
-    const value=await response.json();if(!response.ok)throw new Error(value.error||'Could not download instructions.');
-    const url=URL.createObjectURL(new Blob([value.markdown],{type:'text/markdown;charset=utf-8'}));
-    const link=document.createElement('a');link.href=url;link.download=value.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }
   document.getElementById('help-toggle').addEventListener('click',toggleHelp);
-  document.getElementById('download-instructions').addEventListener('click',()=>downloadInstructions().catch(e=>alert(e.message)));
+  document.getElementById('download-instructions').addEventListener('click',()=>document.getElementById('instructions-dialog').showModal());
   document.addEventListener('click',event=>{sparkle(event);if(!event.target.closest('.help-popover,.help-badge'))closeHelp();queueHelp();});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&popover){event.preventDefault();closeHelp();}});
   document.addEventListener('scroll',queueHelp,true);window.addEventListener('resize',queueHelp);

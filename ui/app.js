@@ -52,7 +52,7 @@ function report(error) { const message=error.message||String(error);toast(messag
 function inlineError(id, error) { $(id).textContent = error ? error.message || String(error) : ''; show(id, !!error); }
 async function api(url, payload) {
   const response = await fetch(url, {method: payload === undefined ? 'GET' : 'POST',
-    headers: {'X-Workbench-Token': token, 'Content-Type': 'application/json'},
+    headers: {'X-Workbench-Token': token, 'Content-Type': 'application/json', ...(state.data?.workspaces?{'X-Workbench-Workspace':state.data.workspaces.selected}:{})},
     ...(payload === undefined ? {} : {body: JSON.stringify(payload)})});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
@@ -131,26 +131,27 @@ function workArea() { show('empty-state', false); show('work-area'); }
 function setEditor(sql) {
   $('sql-editor').value = sql;
   updateLines();
-  localStorage.setItem('fieldwork-editor', sql);
+  localStorage.setItem(draftKey('editor'), sql);
   const tab=state.tabs.find(item=>item.id===state.activeTab);
   if(tab){tab.sql=sql;persistTabs();}
 }
 function persistTabs(){
   const snapshot={active:state.activeTab,updated:Date.now(),tabs:state.tabs.map(tab=>({id:tab.id,name:tab.name,sql:tab.sql}))};
-  localStorage.setItem('fieldwork-tabs',JSON.stringify(snapshot));
+  localStorage.setItem(draftKey('tabs'),JSON.stringify(snapshot));
   clearTimeout(draftTimer);
   draftTimer=setTimeout(()=>api('/api/drafts',snapshot).catch(()=>{}),650);
 }
 function cacheTab(){
   const tab=state.tabs.find(item=>item.id===state.activeTab);
   if(!tab)return;
-  Object.assign(tab,{sql:$('sql-editor').value,result:state.result,groups:[...state.groups],groupDataset:state.groupDataset,groupBase:state.groupBase,previous:[...state.previous],sort:state.sort});
+  Object.assign(tab,{sql:$('sql-editor').value,result:state.result,groups:[...state.groups],groupDataset:state.groupDataset,groupBase:state.groupBase,previous:[...state.previous],sort:state.sort,virtualScroll});
 }
 function renderTabs(){
   $('query-tabs').replaceChildren(...state.tabs.map(tab=>node('div',{class:'query-tab'+(tab.id===state.activeTab?' active':'')},
     node('button',{onclick:()=>switchTab(tab.id),title:tab.name},tab.name),
     node('button',{class:'tab-close','aria-label':'Close '+tab.name,onclick:()=>closeTab(tab.id)},'×'))),
-    node('button',{class:'new-tab','aria-label':'New SQL tab',title:'New SQL tab',onclick:()=>newTab()},'+'));
+    node('button',{class:'new-tab','aria-label':'New SQL tab',title:'New SQL tab',onclick:()=>newTab()},'+'),
+    node('button',{id:'expand-editor',class:'icon-button expand-button',title:'Expand editor','aria-label':'Expand editor',onclick:()=>focusPanel(focusView?'':'editor')},focusView?'↙':'⛶'));
 }
 function switchTab(id){
   if(state.busy)return toast('Wait for the current operation or cancel it before switching tabs.');
@@ -158,6 +159,7 @@ function switchTab(id){
   const tab=state.tabs.find(item=>item.id===id);if(!tab)return;
   state.activeTab=id;state.result=tab.result||null;state.groups=tab.groups||[];state.groupDataset=tab.groupDataset||null;
   state.groupBase=tab.groupBase||'';state.previous=tab.previous||[];state.sort=tab.sort||null;state.expanded.clear();
+  clearVirtualPage();virtualScroll=tab.virtualScroll||0;
   setEditor(tab.sql);setMode('sql');renderTabs();workArea();
   if(state.result)renderResults();else{
     $('result-count').textContent='—';$('query-stat').textContent='No query run in this tab';
@@ -266,6 +268,7 @@ async function executeEditor() {
 async function runSQL(sql, offset = 0, reset = true, extra = {}) {
   if (!sql.trim()) throw new Error('Write a query first.');
   workArea();
+  clearVirtualPage();
   if (reset) state.previous = [];
   let previewed=false;
   try {
@@ -276,7 +279,7 @@ async function runSQL(sql, offset = 0, reset = true, extra = {}) {
     state.result = result; state.activeSQL = sql; state.expanded.clear();
     cacheTab();
     $('editor-status').textContent = `Finished in ${(result.elapsed_ms/1000).toFixed(2)}s`;
-    if(previewed){renderResultSummary();updatePaging();}
+    if(previewed){renderResultSummary();updatePaging();renderVirtualRows();}
     else{renderResults();setResultView('table');}
     window.bedazzle?.celebrate('Done',`${result.total_rows !== undefined ? Number(result.total_rows).toLocaleString()+' results' : result.rows.length+' rows'} · ${(result.elapsed_ms/1000).toFixed(2)}s`);
   } catch (error) {
@@ -329,6 +332,7 @@ function renderResults() {
   show('result-message',false);
   const table = tableFor(result, {interactive:true}); table.id = 'result-table';
   $('table-scroll').replaceChildren(table);
+  renderVirtualRows();
   renderResultSummary();
   const notes = [];
   if (result.total_columns > result.columns.length) notes.push(`Showing ${result.columns.length} of ${result.total_columns} columns. Select fewer columns in SQL to see the others.`);
@@ -348,8 +352,10 @@ function renderResultSummary(){
 function updatePaging() {
   const result = state.result;
   $('previous-page').disabled = state.busy || !state.previous.length;
-  $('next-page').disabled = state.busy || !result?.has_more || result.statement_count > 1;
-  $('page-label').textContent = result ? `${result.rows.length ? result.offset+1 : 0}–${result.offset+result.rows.length}` : '—';
+  $('next-page').disabled = state.busy || !(result?.logical_size>500 && result.total_rows!==undefined ? result.page_start+result.logical_size<result.total_rows : result?.has_more) || result.statement_count > 1;
+  const start=result?.page_start??result?.offset??0;
+  const end=result?.logical_size>500&&result.statement_count===1&&result.selectable?Math.min(start+result.logical_size,result.total_rows??start+result.rows.length):start+(result?.rows.length||0);
+  $('page-label').textContent=result?`${result.rows.length?(start+1).toLocaleString():0}–${end.toLocaleString()}`:'—';
 }
 function setResultView(view) {
   state.view = view;
@@ -481,13 +487,13 @@ async function showSettings() {
   $('hardware-cards').replaceChildren(...[
     [`${(hw.total_mb/1024).toFixed(0)} GB`,'Installed RAM'],[`${(hw.available_mb/1024).toFixed(1)} GB`,'Available RAM'],[`${hw.disk_free_gb} GB`,'Free workspace disk']
   ].map(([value,label])=>node('div',{},node('strong',{},value),node('span',{},label))));
-  for (const [id,key] of [['profile','profile'],['memory','memory_mb'],['threads','threads'],['spill','spill_gb'],['timeout','timeout']]) $('setting-'+id).value = settings[key];
-  inlineError('settings-error',null);$('settings-dialog').showModal();
+  for (const [id,key] of [['profile','profile'],['memory','memory_mb'],['threads','threads'],['spill','spill_gb'],['timeout','timeout'],['page-size','default_page_size']]) $('setting-'+id).value = settings[key];
+  inlineError('settings-error',null);$('settings-dialog').showModal();refreshRepository().catch(error=>{$('repository-status').textContent=error.message;});
 }
 async function saveSettings() {
   try {
-    state.data = {...state.data,...await api('/api/settings',{profile:$('setting-profile').value,memory_mb:Number($('setting-memory').value),threads:Number($('setting-threads').value),spill_gb:Number($('setting-spill').value),timeout:Number($('setting-timeout').value)})};
-    renderResources();$('settings-dialog').close();toast('Performance settings saved. Every new operation uses them.');
+    state.data = {...state.data,...await api('/api/settings',{profile:$('setting-profile').value,memory_mb:Number($('setting-memory').value),threads:Number($('setting-threads').value),spill_gb:Number($('setting-spill').value),timeout:Number($('setting-timeout').value),default_page_size:Number($('setting-page-size').value)})};
+    $('page-size').value=state.data.settings.default_page_size;renderResources();$('settings-dialog').close();toast('Performance settings saved. Every new operation uses them.');
   } catch(error) { inlineError('settings-error',error); }
 }
 async function openLibrary(kind) {
@@ -518,12 +524,12 @@ function showSchema() {
   $('detail-content').replaceChildren(node('div',{class:'schema-list'},source.columns.map(column=>node('button',{onclick:()=>{insertSQL(sqlName(column.name));$('detail-dialog').close();}},column.name,node('small',{},column.type)))));
   $('detail-dialog').showModal();
 }
-function insertSQL(text) { const area=$('sql-editor');area.setRangeText(text,area.selectionStart,area.selectionEnd,'end');setMode('sql');area.focus();updateLines();cacheTab();persistTabs();localStorage.setItem('fieldwork-editor',area.value); }
+function insertSQL(text) { const area=$('sql-editor');area.setRangeText(text,area.selectionStart,area.selectionEnd,'end');setMode('sql');area.focus();updateLines();cacheTab();persistTabs();localStorage.setItem(draftKey('editor'),area.value); }
 async function explain() {
   const sql=state.mode==='explore'?buildQuery().sql:$('sql-editor').value;
   const output=await runJob('explain',{sql});
   $('detail-title').textContent='How DuckDB reads this query';$('detail-eyebrow').textContent='QUERY PLAN · NO DATA QUERY EXECUTED';
-  $('detail-content').replaceChildren(node('pre',{},output.plan));$('detail-dialog').showModal();
+  renderPlan(output);$('detail-dialog').showModal();
 }
 async function profile() {
   if(!state.selected) throw new Error('Choose a dataset first.');
@@ -562,12 +568,12 @@ async function init() {
   const tabBar=node('div',{id:'query-tabs',class:'query-tabs','aria-label':'SQL tabs'});
   document.querySelector('.editor-panel').prepend(tabBar);
   try{
-    const local=JSON.parse(localStorage.getItem('fieldwork-tabs')||'null');
+    const local=JSON.parse(localStorage.getItem(draftKey('tabs'))||'null');
     const remote=state.data.drafts;
     const saved=remote&&(!local||remote.updated>=local.updated)?remote:local;
     if(saved&&Array.isArray(saved.tabs)&&saved.tabs.length){state.tabs=saved.tabs.slice(0,10).filter(tab=>typeof tab.sql==='string'&&typeof tab.name==='string');state.activeTab=saved.active;}
   }catch{}
-  if(!state.tabs.length)state.tabs=[{id:crypto.randomUUID(),name:'Query 1',sql:localStorage.getItem('fieldwork-editor')||'SELECT 42 AS a_good_place_to_start;'}];
+  if(!state.tabs.length)state.tabs=[{id:crypto.randomUUID(),name:'Query 1',sql:localStorage.getItem(draftKey('editor'))||'SELECT 42 AS a_good_place_to_start;'}];
   if(!state.tabs.some(tab=>tab.id===state.activeTab))state.activeTab=state.tabs[0].id;
   setEditor(state.tabs.find(tab=>tab.id===state.activeTab).sql);renderTabs();
   bind('open-file','click',()=>openImport('open'));bind('empty-open','click',()=>openImport('open'));bind('sidebar-add','click',()=>openImport('open'));
@@ -583,7 +589,7 @@ async function init() {
   bind('builder-dataset','change',()=>{state.selected=$('builder-dataset').value;builderColumns();});
   bind('view-generated','click',()=>{setEditor(buildQuery().sql);setMode('sql');});
   bind('run-query','click',executeEditor);bind('cancel-job','click',cancelJob);
-  bind('sql-editor','input',()=>{updateLines();localStorage.setItem('fieldwork-editor',$('sql-editor').value);cacheTab();persistTabs();show('suggestions',false);});
+  bind('sql-editor','input',()=>{updateLines();localStorage.setItem(draftKey('editor'),$('sql-editor').value);cacheTab();persistTabs();show('suggestions',false);});
   $('sql-editor').addEventListener('scroll',()=>{$('line-numbers').scrollTop=$('sql-editor').scrollTop;});
   $('sql-editor').addEventListener('keydown',event=>{
     if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();executeEditor().catch(report);}
@@ -592,7 +598,7 @@ async function init() {
     if(event.key==='Escape')show('suggestions',false);
     if((event.ctrlKey||event.metaKey)&&event.key==='s'){event.preventDefault();try{saveDialog();}catch(error){report(error);}}
   });
-  bind('next-page','click',async()=>{state.previous.push(state.result.offset);await runSQL(state.result.sql,state.result.next_offset,false);});
+  bind('next-page','click',async()=>{state.previous.push(state.result.page_start??state.result.offset);await runSQL(state.result.sql,state.result.logical_size>500?(state.result.page_start+state.result.logical_size):state.result.next_offset,false);});
   bind('previous-page','click',async()=>{const previous=state.previous.pop();await runSQL(state.result.sql,previous,false);});
   bind('page-size','change',async()=>{if(state.result)await runSQL(state.result.sql);});
   for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>setResultView(button.dataset.view));
@@ -604,7 +610,8 @@ async function init() {
   bind('performance-nav','click',showSettings);bind('save-settings','click',saveSettings);
   bind('library-nav','click',()=>openLibrary('saved'));bind('history-nav','click',()=>openLibrary('history'));bind('library-search','input',renderLibrary);
   bind('save-query','click',saveDialog);bind('confirm-save','click',saveQuery);bind('show-schema','click',showSchema);bind('explain-query','click',explain);
-  bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem('fieldwork-tabs')));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
+  bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
+  setupWorkbench();
   if(state.data.catalog.length)workArea();
   // Restore metadata only. Never re-run saved SQL or expensive scans on launch.
   if(state.data.active_job){
