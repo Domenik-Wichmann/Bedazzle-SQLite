@@ -103,7 +103,7 @@ async function runJob(action, payload = {}, onPreview = null) {
       }
     }
   } finally {
-    setBusy(false);
+    setBusy(false);refreshLiveResources();
   }
 }
 async function cancelJob() { await api('/api/cancel', {}); $('job-detail').textContent = 'Stopping the worker and cleaning up temporary files…'; }
@@ -129,8 +129,15 @@ function renderCatalog() {
 }
 function renderResources() {
   const {effective, hardware} = state.data;
-  $('resource-summary').textContent = effective.error ? 'Low resources · check settings' : `${effective.memory_mb} MB budget · ${effective.threads} thread${effective.threads === 1 ? '' : 's'}`;
-  $('footer-resources').textContent = `${(hardware.available_mb/1024).toFixed(1)} GB RAM available · ${hardware.disk_free_gb} GB disk free`;
+  $('resource-summary').textContent = effective.error ? 'Low resources - check settings' : `${effective.memory_mb} MB budget - ${effective.threads} thread${effective.threads === 1 ? '' : 's'}${effective.low_memory?' - low-memory mode':''}`;
+  $('footer-resources').textContent = `${(hardware.available_mb/1024).toFixed(1)} GB RAM available now - ${hardware.disk_free_gb} GB disk free`;
+}
+async function refreshLiveResources(){
+  if(!state.data||document.hidden)return;
+  try{const info=await api('/api/resources');state.data.hardware=info.hardware;state.data.effective=info.effective;renderResources();
+    if($('settings-dialog').open){const value=$('hardware-cards').children[1]?.querySelector('strong');if(value)value.textContent=(info.hardware.available_mb/1024).toFixed(1)+' GB';}
+  }catch{}
+
 }
 function workArea() { show('empty-state', false); show('work-area'); }
 function setEditor(sql) {
@@ -617,6 +624,7 @@ async function init() {
   bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;flushDrafts();clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
   setupWorkbench();
   setupModules();setupEditor();
+  setInterval(refreshLiveResources,10000);window.addEventListener('focus',refreshLiveResources);
   if(state.data.catalog.length)workArea();
   // Restore metadata only. Never re-run saved SQL or expensive scans on launch.
   if(state.data.active_job){

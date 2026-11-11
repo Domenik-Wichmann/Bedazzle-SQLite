@@ -55,6 +55,8 @@ Names use double quotes; text values use single quotes. **Columns** shows the ac
 
 ## Large files and laptop resources
 
+Low-memory mode permits 64–255 MB engine buffer budgets with one query thread instead of refusing every import below 256 MB. Automatic still leaves most currently available RAM for Windows; very low system memory (below about 160 MB available) blocks new work. RAM readings refresh while the app is visible and after operations. Opening a file does not guarantee every large sort/join can complete with a small buffer budget; Parquet and sufficient disk space help.
+
 CSV columns are preserved as text by default to protect identifiers and leading zeros. Choose automatic typing or explicit casts when you want numbers/dates. A malformed CSV fails visibly rather than silently skipping records.
 
 For repeated analysis of a large CSV, import it as Parquet once. Keep the working files on an SSD and leave space for both output and temporary files. Conversion may change row order; use ORDER BY when order matters.

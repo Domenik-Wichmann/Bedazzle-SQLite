@@ -212,7 +212,7 @@ The **Show in folder** notification reveals the completed output. Excel has its 
 
 **Performance & settings** shows installed RAM, currently available RAM and free workspace disk. Installed RAM and available RAM are different; many open apps can leave little free memory on a 16 GB machine.
 
-Automatic buffer budget: minimum of 4 GB, 25% of installed RAM, and 40% of available RAM. The engine refuses an automatic budget below 256 MB while still allowing the UI to open. This is DuckDB’s buffer budget, not a hard cap on all process allocations.
+Automatic buffer budget: minimum of 4 GB, 25% of installed RAM, and 40% of available RAM. Budgets from 64 to 255 MB use single-threaded low-memory mode; the old blanket 256 MB minimum has been removed. Automatic blocks below about 160 MB available RAM, where its 40% share cannot supply 64 MB. Manual budgets can be 0 (automatic) or at least 64 MB. This is DuckDB’s buffer budget, not a cap on all process allocations. Large queries may need more memory or Parquet conversion even when file opening succeeds. RAM readings refresh every ten seconds while the page is visible, on window focus, and after operations; bootstrap uses one consistent hardware sample for its displayed RAM and budget.
 
 Automatic threads: at most half the logical CPUs, capped at four and reduced for small budgets. Quiet caps at two threads. Temporary disk defaults to at most 10 GB and leaves a 2 GB free-space reserve at job start. This check does not reserve disk space; output files need additional room.
 

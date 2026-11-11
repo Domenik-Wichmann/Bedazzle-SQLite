@@ -4,6 +4,8 @@ Validated on Windows on 2026-11-11 using the bundled Python 3.14.10 and native D
 
 ## Automated checks
 
+v1.4.1 fixes the overly restrictive memory gate and stale RAM display. A real isolated worker with a simulated 432 MB available-RAM reading successfully opened, queried, converted and exported a 5,000-row CSV using a 172 MB buffer budget and one thread, preserving leading-zero IDs and all rows. Automatic-budget tests cover 160, 300, 432 and 921 MB available; genuinely low automatic budgets are rejected with a live reading. Manual 64 MB budgets are accepted. The UI refreshes lightweight resource readings every ten seconds while visible, on focus and after operations. These checks do not claim that every 5 GB query will fit in 64–172 MB of managed memory.
+
 ### v1.4 performance and editor audit
 
 Measured locally with a 256 MB engine budget and one thread; no real user files were used. The targeted image-report benchmark uses 20,000 input rows, 5,000 saved URL checks, three samples and no network. Median report processing fell from **268.01 ms to 223.97 ms** (about **16%**). Queue construction is skipped only after a fully committed queue-ready marker; report JSON is parsed once into typed Parquet for the join and hash aggregation. Existing deduplication, per-row expectations, resume and stable merges remain tested. Baseline source is the v1.3 runner; `tests/module_performance.py` accepts a saved baseline path rather than assuming the current checkout is an older version.

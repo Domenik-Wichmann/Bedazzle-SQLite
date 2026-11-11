@@ -118,21 +118,23 @@ class Jobs:
                 'spill_gb': 10, 'timeout': 300, 'default_page_size': 100,
                 **self.store.get('settings', {})}
 
-    def effective_settings(self):
-        saved, hw = self.settings(), hardware()
+    def effective_settings(self, hw=None):
+        saved, hw = self.settings(), hardware() if hw is None else hw
         memory = saved['memory_mb'] or min(4096, int(hw['total_mb'] * .25), int(hw['available_mb'] * .4))
         if not hw['total_mb']:
             memory = saved['memory_mb'] or 512
-        if memory < 256:
-            raise ValueError(f'Automatic budget is {memory} MB from {hw["available_mb"]} MB available RAM. A 256 MB buffer budget is required. Automatic uses at most 40% of available RAM: leave at least 640 MB available, then retry.')
+        if not saved['memory_mb'] and memory < 64:
+            raise ValueError(f'Windows currently reports only {hw["available_mb"]} MB available RAM. Automatic mode needs about 160 MB available for a 64 MB engine budget. Free some memory and retry; the live reading may differ from an earlier reading.')
         threads = saved['threads'] or max(1, min(4, hw['cpus'] // 2, memory // 512))
         if saved['profile'] == 'quiet':
             threads = min(threads, 2)
+        if memory < 256:threads=1
         free = shutil.disk_usage(self.workspace).free / 1024**3
         spill = min(saved['spill_gb'], max(0, int(free - 2)))
         if spill < 1:
             raise ValueError('Keep at least 3 GB of free space on the workspace drive for queries and temporary files.')
-        return {**saved, 'memory_mb': memory, 'threads': threads, 'spill_gb': spill}
+        return {**saved, 'memory_mb': memory, 'threads': threads, 'spill_gb': spill,
+                'low_memory':memory<256,'available_mb':hw['available_mb']}
 
     def set_settings(self, value):
         if self.active_id:
@@ -148,8 +150,8 @@ class Jobs:
             clean[key] = int(value.get(key, default))
             if not low <= clean[key] <= high:
                 raise ValueError(f'{key} must be between {low} and {high}.')
-        if 0 < clean['memory_mb'] < 256:
-            raise ValueError('Memory budget must be automatic (0) or at least 256 MB.')
+        if 0 < clean['memory_mb'] < 64:
+            raise ValueError('Memory budget must be automatic (0) or at least 64 MB.')
         hw = hardware()
         if hw['total_mb'] and clean['memory_mb'] > hw['total_mb'] * .5:
             raise ValueError('Keep the engine budget at or below half of installed RAM to leave room for the interface and Windows.')
@@ -339,7 +341,7 @@ class Jobs:
     def bootstrap(self):
         hw = hardware()
         try:
-            effective = self.effective_settings()
+            effective = self.effective_settings(hw)
         except ValueError as error:
             effective = {'error': str(error)}
         return {'catalog': self.catalog, 'settings': self.settings(), 'effective': effective,
@@ -421,6 +423,11 @@ class Handler(BaseHTTPRequestHandler):
                                             'demo_path': str(ROOT / 'examples' / 'catalogs.csv')})
             if path == '/api/repository':
                 return self.reply(200, self.server.repository.status())
+            if path == '/api/resources':
+                hw=hardware()
+                try:effective=self.server.jobs.effective_settings(hw)
+                except ValueError as error:effective={'error':str(error)}
+                return self.reply(200,{'hardware':{**hw,'disk_free_gb':round(shutil.disk_usage(self.server.jobs.workspace).free/1024**3,1)},'effective':effective})
             if path == '/api/modules':
                 from module_runtime import discover, runs
                 modules,errors=discover()
