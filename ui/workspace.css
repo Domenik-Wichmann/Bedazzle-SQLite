@@ -1,0 +1,20 @@
+.query-tabs { display:flex; align-items:center; gap:3px; padding:8px 12px 0; background:#f4f7ee; border-bottom:1px solid #e2e9d8; overflow:auto; }
+.query-tab { display:flex; align-items:center; border:1px solid transparent; border-bottom:0; border-radius:6px 6px 0 0; color:#8b9d7b; white-space:nowrap; }
+.query-tab.active { background:white; border-color:#dce6cf; color:#466436; }
+.query-tab>button:first-child { padding:8px 6px 9px 12px; font-size:11px; max-width:170px; overflow:hidden; text-overflow:ellipsis; }
+.query-tab .tab-close { font-size:15px; color:#9aab8a; padding:2px 9px 4px 5px; }
+.query-tab .tab-close:hover { color:#405f31; }
+.new-tab { padding:3px 10px; font-size:21px; color:#829b6c; margin-bottom:3px; }
+.sql-pane textarea,.line-numbers { font-size:13px; }
+table { font-size:12px; }
+th { font-size:11px; }
+.column-type { font-size:9px!important; }
+.dataset-text strong { font-size:13px; }
+.nav-item { font-size:13px; }
+.editor-footer { font-size:10px; }
+.pagination label,.results-footer { font-size:10px; }
+.builder-grid label,.builder-grid select,.builder-grid input { font-size:11px; }
+.toast { position:relative; padding-right:35px; max-width:380px; }
+.toast small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:325px; }
+.toast .toast-dismiss { position:absolute; right:10px; top:6px; margin:0; padding:0; text-decoration:none; font-size:20px; line-height:1; color:inherit; }
+@media(max-width:800px) { .query-tab>button:first-child{font-size:10px;max-width:115px}.nav-item{font-size:11px}.dataset-text strong{font-size:12px} }

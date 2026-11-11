@@ -1,0 +1,7 @@
+url,client,catalog,price,quantity
+https://example.com/products/001,Acme,Spring,12.50,30
+https://example.com/products/001,Acme,Summer,13.00,20
+https://example.com/products/001,Northwind,Main,12.00,45
+https://example.com/products/002,Acme,Spring,8.25,60
+https://example.com/products/002,Northwind,Main,8.50,35
+https://example.com/products/003,Contoso,Autumn,22.00,12
