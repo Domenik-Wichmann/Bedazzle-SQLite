@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import getpass
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -20,6 +21,7 @@ from urllib.parse import urlparse
 import uuid
 
 from engine import ROOT, serve_worker
+APP_VERSION = '1.4.2'
 
 
 def hardware():
@@ -345,6 +347,7 @@ class Jobs:
         except ValueError as error:
             effective = {'error': str(error)}
         return {'catalog': self.catalog, 'settings': self.settings(), 'effective': effective,
+                'app_version':APP_VERSION,'app_root':str(ROOT),'runtime_user':getpass.getuser(),
                 'hardware': {**hw, 'disk_free_gb': round(shutil.disk_usage(self.workspace).free / 1024**3, 1)},
                 'history': self.store.queries('history'), 'saved': self.store.queries('saved'),
                 'active_job': self.active_id, 'workspace': str(self.workspace), 'engine': 'DuckDB 2.0.0'}
@@ -378,6 +381,9 @@ class Handler(BaseHTTPRequestHandler):
                 pass  # A background launch may no longer have an open terminal.
 
     def reply(self, status, data, mime='application/json; charset=utf-8'):
+        if status >= 400 and isinstance(data,dict) and data.get('error'):
+            try:self.server.jobs.store.put('last_error',{'time':time.time(),'endpoint':urlparse(self.path).path,'error':str(data['error'])[:12000]})
+            except Exception:pass
         raw = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8') if not isinstance(data, bytes) else data
         self.send_response(status)
         self.send_header('Content-Type', mime)
@@ -423,6 +429,8 @@ class Handler(BaseHTTPRequestHandler):
                                             'demo_path': str(ROOT / 'examples' / 'catalogs.csv')})
             if path == '/api/repository':
                 return self.reply(200, self.server.repository.status())
+            if path == '/api/diagnostics':
+                return self.reply(200,{'app_version':APP_VERSION,'app_root':str(ROOT),'runtime_user':getpass.getuser(),'last_error':self.server.jobs.store.get('last_error')})
             if path == '/api/resources':
                 hw=hardware()
                 try:effective=self.server.jobs.effective_settings(hw)

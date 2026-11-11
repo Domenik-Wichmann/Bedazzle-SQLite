@@ -25,6 +25,18 @@ def choose(mode, extension='csv', filename=''):
     buffer.value = filename[:32000]
     data = OpenFileName()
     data.lStructSize = ctypes.sizeof(data)
+    # The chooser runs in a console-free child, so it has no owner by default.
+    # Associate it with the foreground Bedazzle browser window, not an unrelated
+    # app the user may have switched to while the request was starting.
+    user32=ctypes.windll.user32
+    user32.GetForegroundWindow.restype=wintypes.HWND
+    user32.GetWindowTextW.argtypes=[wintypes.HWND,wintypes.LPWSTR,ctypes.c_int]
+    user32.GetWindowTextW.restype=ctypes.c_int
+    foreground=user32.GetForegroundWindow()
+    title=ctypes.create_unicode_buffer(1024)
+    if foreground:
+        user32.GetWindowTextW(foreground,title,len(title))
+        if 'bedazzle' in title.value.casefold():data.hwndOwner=foreground
     data.lpstrFile = ctypes.cast(buffer, wintypes.LPWSTR)
     data.nMaxFile = len(buffer)
     data.nFilterIndex = 1
@@ -40,6 +52,8 @@ def choose(mode, extension='csv', filename=''):
         data.lpstrFilter = f'{extension.upper()} file\0*.{extension}\0\0'
         data.lpstrDefExt = extension
         function = ctypes.windll.comdlg32.GetSaveFileNameW
+    function.argtypes=[ctypes.POINTER(OpenFileName)]
+    function.restype=wintypes.BOOL
     if function(ctypes.byref(data)):
         return {'path': buffer.value}
     error = ctypes.windll.comdlg32.CommDlgExtendedError()

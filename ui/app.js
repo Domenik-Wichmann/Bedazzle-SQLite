@@ -48,7 +48,16 @@ function toast(message, error = false, path = null) {
   while($('toast-container').children.length>2)$('toast-container').firstElementChild.remove();
   setTimeout(() => item.remove(), error || path ? 14000 : 5500);
 }
-function report(error) { const message=error.message||String(error);toast(message,!/^Cancelled\./.test(message)); }
+function report(error) {
+  const message=error.message||String(error);
+  const dialog=[...document.querySelectorAll('dialog[open]')].at(-1);
+  if(dialog){
+    let box=dialog.querySelector('.modal-error');
+    if(!box){box=node('div',{class:'modal-error',role:'alert',tabindex:'-1'});dialog.querySelector('h2')?.after(box);}
+    box.textContent=message;box.classList.remove('hidden');box.scrollIntoView({block:'nearest'});return;
+  }
+  toast(message,!/^Cancelled\./.test(message));
+}
 function inlineError(id, error) { $(id).textContent = error ? error.message || String(error) : ''; show(id, !!error); }
 async function api(url, payload) {
   const response = await fetch(url, {method: payload === undefined ? 'GET' : 'POST',
@@ -62,6 +71,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function refresh() {
   state.data = await api('/api/bootstrap');
+  const build=document.querySelector('.main-footer>span');
+  if(build){build.textContent='Bedazzle '+(state.data.app_version||'older build');build.title=state.data.app_root||'';}
   renderCatalog(); renderResources();
   $('saved-count').textContent = state.data.saved.length;
 }
@@ -456,8 +467,13 @@ function openImport(mode) {
 }
 async function picker(mode,extension,filename='') { return (await api('/api/picker',{mode,extension,filename})).path; }
 async function browseImport() {
-  const path = await picker('open','csv');
-  if (path) { $('import-path').value = path; show('import-preview',false);suggestOutput(); }
+  const button=$('browse-import');if(button.disabled)return;
+  button.disabled=true;inlineError('import-error',null);
+  try{
+    const path = await picker('open','csv');
+    if (path) { $('import-path').value = path; show('import-preview',false);suggestOutput(); }
+  }catch(error){inlineError('import-error',new Error('Windows file picker: '+error.message+' You can also paste the full file path in Source file.'));$('import-error').scrollIntoView({block:'nearest'});}
+  finally{button.disabled=false;}
 }
 async function previewImport() {
   inlineError('import-error',null);

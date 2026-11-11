@@ -1,6 +1,7 @@
 """One command to open Bedazzle. No cloud service or frontend build step."""
 import argparse
 import json
+import getpass
 import os
 from pathlib import Path
 import subprocess
@@ -47,6 +48,9 @@ def main():
     if session_file.exists():
         try:
             previous = json.loads(session_file.read_text())
+            if previous.get('runtime_user') and previous['runtime_user'].casefold()!=getpass.getuser().casefold():
+                print('Bedazzle is already running under another Windows account ('+previous['runtime_user']+'). Quit that instance, then start Bedazzle from your own Windows account so native file dialogs can work.',flush=True)
+                return 1
             url = previous['url']
             # A stale or edited session file must not send a token to another host.
             from urllib.parse import urlparse
@@ -69,14 +73,15 @@ def main():
     server.startup = startup
     base_url = f'http://127.0.0.1:{server.server_port}'
     full_url = base_url + '/#' + server.token
-    session_file.write_text(json.dumps({'url':base_url, 'token':server.token, 'pid':os.getpid()}))
+    session_file.write_text(json.dumps({'url':base_url, 'token':server.token, 'pid':os.getpid(),'runtime_user':getpass.getuser()}))
     try:
         server.jobs.submit('catalog', {})
     except ValueError as error:
         # The interface must still open so the user can see RAM and adjust
         # settings, even when there is too little free RAM for an engine job.
         print('Resource notice: ' + str(error), flush=True)
-    print('\nBedazzle · my local data tools', flush=True)
+    from app_server import APP_VERSION
+    print('\nBedazzle '+APP_VERSION+' · '+str(ROOT), flush=True)
     print('Open: ' + full_url, flush=True)
     print('Workspace: ' + str(workspace), flush=True)
     print('Use Quit in the UI or Ctrl+C here to stop.\n', flush=True)

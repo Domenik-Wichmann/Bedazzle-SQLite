@@ -1,4 +1,5 @@
 @echo off
+echo Starting Bedazzle from "%~dp0"
 setlocal
 cd /d "%~dp0"
 set "BEDAZZLE_ROOT=%~dp0"
