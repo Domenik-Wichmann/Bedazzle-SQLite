@@ -3,7 +3,7 @@ process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');const{
 const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json'));
 (async()=>{const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:1366,height:768}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try{
- await page.goto(session.url+'/#'+session.token);await page.locator('#workspace-nav').click();
+ await page.goto(session.url+'/#'+session.token);await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();
  await page.locator('#sql-editor').fill('SELECT c.cl FROM catalogs AS c;');
  await page.locator('#sql-editor').evaluate(e=>{e.focus();e.setSelectionRange(11,11);});await page.keyboard.press('Control+Space');
  await page.waitForFunction(()=>completionLoaded);await page.locator('#suggestions button').filter({hasText:'client'}).first().waitFor();

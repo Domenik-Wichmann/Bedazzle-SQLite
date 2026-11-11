@@ -66,10 +66,14 @@ def main():
 
     try:
         info=request('/api/bootstrap')
-        assert info['catalog']==[] and info['saved']==[] and info['history']==[] and info['drafts'] is None
+        assert any(item.get('example') for item in info['workspaces']['items'])
+        assert len(info['saved'])==4 and info['drafts'] is not None
         if info['active_job']:
             while not request('/api/jobs/'+info['active_job']).get('finished'):
                 time.sleep(.05)
+        assert job('query',{'sql':'SELECT count(*) FROM products'})['rows']==[[1000]]
+        assert job('query',{'sql':'SELECT count(*) FROM offers'})['rows']==[[1200]]
+        request('/api/workspace',{'id':'primary'})
         request('/api/settings',{'memory_mb':256,'threads':1,'spill_gb':1,'timeout':30,'profile':'quiet'})
         opened=job('open',{'path':str(extracted/'examples'/'catalogs.csv')})
         result=job('query',{'sql':f'SELECT count(*) FROM "{opened["name"]}"'})

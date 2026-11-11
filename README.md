@@ -26,6 +26,12 @@ If Python 3.12+ is already installed, `python workbench.py` also works. Developm
 
 ## Using it
 
+The sidebar workspace button opens **Workspace home** with dataset/query counts, source-file sizes and created/last-worked dates. Its small arrow is the workspace switcher. Create and rename workspaces here; **Delete** removes a workspace from the active list into a recoverable local archive. Restore it from Deleted workspaces on the home page. Archiving keeps its saved work on disk and does not free that space. The initial workspace's container is kept in place because it also contains the registry and other workspaces; deleting it never recursively removes that container.
+
+Dataset rows have rename and remove controls. Removing an imported dataset leaves its source file intact. Removing a database table deletes its stored rows after confirmation. Saved queries are kept, but SQL referencing a removed dataset may need updating. The query library has **Rename** and **Delete** controls for saved entries.
+
+First launch includes an **Example workspace**: [products.csv](examples/products.csv) (1,000 rows), [offers.csv](examples/offers.csv) (1,200 rows), two SQL tabs and four saved queries with joins, grouping, a CTE/window ranking and missing matches. Use Run or Explain to explore. Image URLs use example.com and are illustrative, not working image fixtures. Delete the example if unwanted; **Performance & settings → Restore example workspace** creates a fresh copy without overwriting your work. Existing installations also receive an example workspace without changing their selected workspace.
+
 - **Open file:** below the Bedazzle name in the sidebar, choose CSV, TSV, Parquet, JSON, JSONL or NDJSON; preview how it will be read; optionally give it your own SQL name.
 - **Workspaces:** use the sidebar chooser and **+** to create separate collections of datasets, saved queries, history, drafts and settings. Switching saves your current drafts first. Workspace switches close the engine connection, so temporary tables and session variables do not survive the switch; ordinary tables and saved work do.
 - **Screen layout:** drag the divider to resize the actual editor/results cards. The line-number gutter scrolls with the editor instead of stretching the card. Each card has a corner expand/restore button; compact **Editor / Results** tabs switch views while expanded. Escape restores the split. The top-left menu button collapses the sidebar.

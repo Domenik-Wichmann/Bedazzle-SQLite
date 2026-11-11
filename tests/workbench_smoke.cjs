@@ -5,11 +5,11 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
 (async()=>{
  const browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1366,height:768},permissions:['clipboard-read','clipboard-write']});
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- const ready=async()=>{await page.locator('#workspace-select option').first().waitFor({state:'attached'});await page.waitForTimeout(100);};
+ const ready=async()=>{await page.locator('#workspace-nav-label').waitFor();await page.waitForTimeout(100);};
  const idle=async()=>{await page.locator('#job-strip').waitFor({state:'hidden',timeout:30000});await page.waitForTimeout(200);};
  const query=async sql=>{await page.locator('#sql-editor').fill(sql);await page.locator('#run-query').click();await idle();};
  try{
-  await page.goto(session.url+'/#'+session.token);await ready();await page.locator('#workspace-nav').click();
+  await page.goto(session.url+'/#'+session.token);await ready();await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();
   await page.locator('#sql-editor').fill(Array.from({length:1500},(_,i)=>'-- line '+i).join('\n')+'\nSELECT 1;');
   let bounds=await page.evaluate(()=>({body:document.body.scrollHeight,h:innerHeight,editor:document.querySelector('.editor-panel').getBoundingClientRect().height,result:document.querySelector('.results-panel').getBoundingClientRect().bottom}));
   assert(bounds.body<=bounds.h+1);assert(bounds.editor<400);assert(bounds.result<=bounds.h);
@@ -43,20 +43,20 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
   await page.locator('#download-instructions').click();await page.locator('#copy-instructions').click();await page.waitForFunction(()=>document.querySelector('#instructions-status').textContent.startsWith('Copied'));
   assert((await page.evaluate(()=>navigator.clipboard.readText())).includes('## Exporting complete results'));await page.locator('#instructions-dialog .close-button').click();
   console.log('PASS: structured expandable query plan and complete clipboard guide');
-  const original=await page.locator('#workspace-select').inputValue(),primaryName=await page.locator('#workspace-name').textContent(),name='Browser workspace '+Date.now();
+  const original=await page.evaluate(()=>state.data.workspaces.selected),primaryName=await page.locator('#workspace-name').textContent(),name='Browser workspace '+Date.now();
   await query('SELECT 777 AS primary_draft;');
-  await page.locator('#new-workspace').click();await page.locator('#new-workspace-name').fill(name);await page.locator('#create-workspace').click();await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,name);await ready();
-  const secondary=await page.locator('#workspace-select').inputValue();assert.notEqual(secondary,original);assert.equal(await page.locator('.dataset-row').count(),0);
+  await page.locator('#workspace-menu-toggle').click();await page.locator('#new-workspace').click();await page.locator('#new-workspace-name').fill(name);await page.locator('#create-workspace').click();await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,name);await ready();
+  const secondary=await page.evaluate(()=>state.data.workspaces.selected);assert.notEqual(secondary,original);assert.equal(await page.locator('.dataset-row').count(),0);
   const stale=await page.request.get(session.url+'/api/bootstrap',{headers:{'X-Workbench-Token':session.token,'X-Workbench-Workspace':original}});
   assert.equal(stale.status(),409,'Another tab must not silently adopt the new workspace and overwrite its drafts');
-  await page.locator('#workspace-nav').click();assert(!(await page.locator('#sql-editor').inputValue()).includes('primary_draft'));
+  await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();assert(!(await page.locator('#sql-editor').inputValue()).includes('primary_draft'));
   await query('CREATE TABLE private_table AS SELECT 42 AS x; SELECT * FROM private_table;');
   await page.locator('#performance-nav').click();await page.locator('#setting-page-size').selectOption('5000');await page.locator('#save-settings').click();
-  await page.locator('#workspace-select').selectOption(original);await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,primaryName);await ready();
+  await page.locator('#workspace-menu-toggle').click();await page.locator('[data-workspace-id="'+original+'"]').click();await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,primaryName);await ready();
   assert((await page.locator('#sql-editor').inputValue()).includes('primary_draft'));assert.equal(await page.locator('#page-size').inputValue(),'100');
   assert(!(await page.locator('#datasets').textContent()).includes('private_table'));
-  await page.locator('#workspace-select').selectOption(secondary);await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,name);await ready();assert.equal(await page.locator('#page-size').inputValue(),'5000');assert((await page.locator('#datasets').textContent()).includes('private_table'));
-  await page.locator('#workspace-select').selectOption(original);await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,primaryName);await ready();
+  await page.locator('#workspace-menu-toggle').click();await page.locator('[data-workspace-id="'+secondary+'"]').click();await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,name);await ready();assert.equal(await page.locator('#page-size').inputValue(),'5000');assert((await page.locator('#datasets').textContent()).includes('private_table'));
+  await page.locator('#workspace-menu-toggle').click();await page.locator('[data-workspace-id="'+original+'"]').click();await page.waitForFunction(n=>document.querySelector('#workspace-name')?.textContent===n,primaryName);await ready();
   await page.screenshot({path:'workspace/verification/bedazzle-workbench.png'});
   await page.setViewportSize({width:820,height:600});assert((await page.locator('.results-panel').boundingBox()).y<600);
   assert.deepEqual(errors,[]);console.log('PASS: independent workspaces preserve datasets, editor drafts and default page sizes');

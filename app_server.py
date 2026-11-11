@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import uuid
 
 from engine import ROOT, serve_worker
-APP_VERSION = '1.4.2'
+APP_VERSION = '1.5.0'
 
 
 def hardware():
@@ -95,6 +95,11 @@ class Store:
         with self.connection() as db:
             db.execute('DELETE FROM saved WHERE id=?', (query_id,))
 
+    def rename_saved(self,query_id,name):
+        name=str(name).strip()
+        if not name or len(name)>100:raise ValueError('Choose a query name of 1–100 characters.')
+        with self.connection() as db:db.execute('UPDATE saved SET name=? WHERE id=?',[name,query_id])
+
 
 class Jobs:
     def __init__(self, workspace):
@@ -160,7 +165,7 @@ class Jobs:
         self.store.put('settings', clean)
 
     def submit(self, action, payload):
-        if action not in ('catalog', 'preview', 'open', 'convert', 'query', 'export', 'profile', 'count', 'explain', 'rename', 'module_run', 'module_merge', 'module_schema', 'completion_metadata'):
+        if action not in ('catalog', 'preview', 'open', 'convert', 'query', 'export', 'profile', 'count', 'explain', 'rename', 'remove_dataset', 'module_run', 'module_merge', 'module_schema', 'completion_metadata'):
             raise ValueError('Unknown operation.')
         with self.lock:
             if self.closed:
@@ -361,6 +366,11 @@ class Server(ThreadingHTTPServer):
         from workspaces import Workspaces
         from repository import Repository
         self.workspaces = Workspaces(workspace)
+        fresh=not self.workspaces.file.exists() and not (Path(workspace)/'preferences.sqlite3').exists()
+        if not self.workspaces.data.get('example_offered'):
+            from example_workspace import install
+            example=install(self.workspaces)
+            if fresh:self.workspaces.select(example)
         self.workspace_lock = threading.Lock()
         self.jobs = Jobs(self.workspaces.path())
         self.repository = Repository(ROOT)
@@ -429,6 +439,8 @@ class Handler(BaseHTTPRequestHandler):
                                             'demo_path': str(ROOT / 'examples' / 'catalogs.csv')})
             if path == '/api/repository':
                 return self.reply(200, self.server.repository.status())
+            if path == '/api/workspaces':
+                with self.server.workspace_lock:return self.reply(200,self.server.workspaces.overview())
             if path == '/api/diagnostics':
                 return self.reply(200,{'app_version':APP_VERSION,'app_root':str(ROOT),'runtime_user':getpass.getuser(),'last_error':self.server.jobs.store.get('last_error')})
             if path == '/api/resources':
@@ -464,6 +476,8 @@ class Handler(BaseHTTPRequestHandler):
                       '/modules.css': ('modules.css', 'text/css; charset=utf-8'),
                       '/sql_completion.js': ('sql_completion.js', 'text/javascript; charset=utf-8'),
                       '/editor.js': ('editor.js', 'text/javascript; charset=utf-8'),
+                      '/organize.js': ('organize.js', 'text/javascript; charset=utf-8'),
+                      '/organize.css': ('organize.css', 'text/css; charset=utf-8'),
                       '/favicon.svg': ('favicon.svg', 'image/svg+xml')}
             if path in assets:
                 name, mime = assets[path]
@@ -497,7 +511,26 @@ class Handler(BaseHTTPRequestHandler):
                     jobs.close()
                     self.server.workspaces.select(key)
                     self.server.jobs = Jobs(self.server.workspaces.path())
+                    if (self.server.jobs.workspace/'example_seed.json').exists():
+                        try:self.server.jobs.submit('catalog',{})
+                        except ValueError:pass  # The UI still opens with its resource warning.
                 return self.reply(200, {'ok': True})
+            if path == '/api/workspace-manage':
+                with self.server.workspace_lock:
+                    if jobs.active_id or self.server.picker_lock.locked():raise ValueError('Finish or cancel the current operation before changing workspaces.')
+                    action=value.get('action');key=value.get('id');selected=self.server.workspaces.data['selected']
+                    if action=='rename':self.server.workspaces.rename(key,value['name'])
+                    elif action=='archive':
+                        self.server.workspaces.path(key)
+                        if key==selected:jobs.close()
+                        self.server.workspaces.archive(key)
+                        if key==selected:self.server.jobs=Jobs(self.server.workspaces.path())
+                    elif action=='restore':self.server.workspaces.restore(key)
+                    elif action=='example':
+                        from example_workspace import install
+                        key=install(self.server.workspaces)
+                    else:raise ValueError('Unknown workspace action.')
+                    return self.reply(200,{'id':key,'selected':self.server.workspaces.data['selected'],'reload':selected!=self.server.workspaces.data['selected']})
             if path == '/api/repository':
                 if jobs.active_id:
                     raise ValueError('Wait for the current query before changing application files.')
@@ -533,6 +566,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/remove-saved':
                 jobs.store.remove_saved(value['id'])
                 return self.reply(200, {'saved': jobs.store.queries('saved')})
+            if path == '/api/rename-saved':
+                jobs.store.rename_saved(value['id'],value['name'])
+                return self.reply(200,{'saved':jobs.store.queries('saved')})
             if path == '/api/picker':
                 mode = value.get('mode', 'open')
                 if mode not in ('open', 'save'):

@@ -7,7 +7,7 @@ const fixture=JSON.parse(fs.readFileSync('workspace/module-smoke-fixture.json'))
  const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:1440,height:960}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const idle=async()=>{await page.locator('#job-strip').waitFor({state:'hidden',timeout:60000});await page.waitForTimeout(150);};
- const query=async sql=>{await page.locator('#workspace-nav').click();await page.locator('#sql-editor').fill(sql);await page.locator('#run-query').click();await idle();};
+ const query=async sql=>{await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();await page.locator('#sql-editor').fill(sql);await page.locator('#run-query').click();await idle();};
  try{
   await page.goto(session.url+'/#'+session.token);await page.locator('#module-menu option[value="image_checker"]').waitFor({state:'attached'});
   const base=fixture.url;

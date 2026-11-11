@@ -11,7 +11,7 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
  const query=async(sql)=>{await page.locator('#sql-mode').click();await page.locator('#sql-editor').fill(sql);await page.locator('#run-query').click();await idle();};
  try{
   await page.goto(session.url+'/#'+session.token);
-  await page.locator('#workspace-nav').click();
+  await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();
   assert.equal(await page.title(),'Bedazzle');
   assert.equal(await page.locator('.workspace-heading').count(),0);
   await page.locator('#sql-editor').fill('SELECT\n  i,\n  i % 3 AS k\nFROM\n  range(156) t(i)\nORDER BY\n  i;');

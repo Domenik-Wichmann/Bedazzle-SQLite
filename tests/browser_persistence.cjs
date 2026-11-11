@@ -13,7 +13,7 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
     const page=await first.newPage();
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(session.url+'/#'+session.token);
-    await page.locator('#workspace-nav').click();
+    await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();
     await page.locator('#sql-editor').fill("SELECT 'server-backed draft' AS note;");
     await page.waitForTimeout(900);
     const response=await page.request.get(session.url+'/api/bootstrap',{headers:{'X-Workbench-Token':session.token}});

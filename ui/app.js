@@ -131,7 +131,7 @@ function renderCatalog() {
       node('span', {class:'dataset-icon'}, dataset.kind.slice(0,3).toUpperCase()),
       node('span', {class:'dataset-text'}, node('strong', {}, dataset.name), node('small', {}, dataset.error ? 'Source unavailable' : `${dataset.columns.length} columns${dataset.bytes ? ' · ' + humanBytes(dataset.bytes) : ''}`)));
     $('datasets').append(node('div',{class:'dataset-row'},button,
-      node('button',{class:'dataset-rename','aria-label':'Rename '+dataset.name,title:'Rename dataset',onclick:()=>openRename(dataset.name)},'✎')));
+      node('button',{class:'dataset-rename','aria-label':'Rename '+dataset.name,title:'Rename dataset',onclick:()=>openRename(dataset.name)},'✎'),node('button',{class:'dataset-remove','aria-label':'Remove '+dataset.name,title:'Remove dataset',onclick:()=>removeDataset(dataset.name).catch(report)},'×')));
   }
   const previous = $('builder-dataset').value;
   fillOptions('builder-dataset', datasets.map(item => [item.name, item.name]));
@@ -150,7 +150,7 @@ async function refreshLiveResources(){
   }catch{}
 
 }
-function workArea() { show('empty-state', false); show('work-area'); }
+function workArea() { document.body.classList.remove('home-view');show('workspace-home',false);$('workspace-nav').classList.remove('active');show('empty-state', false); show('work-area'); }
 function setEditor(sql) {
   $('sql-editor').value = sql;
   updateLines();
@@ -540,7 +540,7 @@ function renderLibrary() {
     const button=node('button',{class:'library-item-main',onclick:()=>{setEditor(item.sql);setMode('sql');workArea();$('library-dialog').close();}},
       node('strong',{},item.name || item.sql.split('\n')[0].slice(0,90)),node('code',{},item.sql),node('small',{},new Date(item.created*1000).toLocaleString()));
     const row=node('div',{class:'library-item'},button);
-    if (state.library === 'saved') row.append(node('button',{class:'text-button',onclick:async()=>{try{const data=await api('/api/remove-saved',{id:item.id});state.data.saved=data.saved;$('saved-count').textContent=data.saved.length;renderLibrary();}catch(error){report(error);}}},'Remove'));
+    if (state.library === 'saved') row.append(node('div',{class:'query-actions'},node('button',{class:'text-button',onclick:()=>editName('Rename saved query',item.name,async name=>{const data=await api('/api/rename-saved',{id:item.id,name});state.data.saved=data.saved;renderLibrary();})},'Rename'),node('button',{class:'text-button delete-action',onclick:async()=>{if(!confirm('Delete saved query '+item.name+'? Dataset files are kept.'))return;try{const data=await api('/api/remove-saved',{id:item.id});state.data.saved=data.saved;$('saved-count').textContent=data.saved.length;renderLibrary();}catch(error){report(error);}}},'Delete')));
     $('library-list').append(row);
   }
 }
@@ -611,7 +611,7 @@ async function init() {
   bind('import-output','input',()=>{$('import-output').dataset.custom='true';});
   bind('browse-parquet','click',async()=>{const path=await picker('save','parquet',$('import-output').value);if(path){$('import-output').value=path;$('import-output').dataset.custom='true';}});
   bind('load-demo','click',async()=>{const output=await runJob('open',{path:state.data.demo_path,options:{types:'auto'}});await selectDataset(output.name);});
-  bind('workspace-nav','click',()=>{workArea();$('sql-editor').focus();});
+
   bind('sql-mode','click',()=>setMode('sql'));bind('explore-mode','click',()=>setMode('explore'));
   bind('builder-dataset','change',()=>{state.selected=$('builder-dataset').value;builderColumns();});
   bind('view-generated','click',()=>{setEditor(buildQuery().sql);setMode('sql');});
@@ -639,7 +639,7 @@ async function init() {
   bind('save-query','click',saveDialog);bind('confirm-save','click',saveQuery);bind('show-schema','click',showSchema);bind('explain-query','click',explain);
   bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;flushDrafts();clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
   setupWorkbench();
-  setupModules();setupEditor();
+  setupModules();setupEditor();setupOrganization();
   setInterval(refreshLiveResources,10000);window.addEventListener('focus',refreshLiveResources);
   if(state.data.catalog.length)workArea();
   // Restore metadata only. Never re-run saved SQL or expensive scans on launch.

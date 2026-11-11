@@ -91,6 +91,12 @@ def create_connection(workspace, settings, job_id):
     conn.execute('CREATE TABLE IF NOT EXISTS _wb_sources '
                  '(name VARCHAR PRIMARY KEY, path VARCHAR, bytes BIGINT, kind VARCHAR)')
     conn.execute('CREATE TABLE IF NOT EXISTS _wb_aliases (name VARCHAR PRIMARY KEY, target VARCHAR)')
+    seed=workspace/'example_seed.json'
+    if seed.exists():
+        files=json.loads(seed.read_text('utf-8'))['files'];existing={r[0] for r in conn.execute('SHOW TABLES').fetchall()}
+        for name,path in files.items():
+            if name not in existing:attach_source(conn,Path(path),{'types':'auto'},name=name)
+        seed.unlink()
     return conn
 
 
@@ -327,6 +333,18 @@ def copy_to(conn, sql, target, options, job_id):
 
 
 def perform(conn, action, payload, job_id, on_preview=None, module_context=None):
+    if action=='remove_dataset':
+        name=str(payload['name'])
+        if name not in {i['name'] for i in catalog(conn)}:raise ValueError('Choose an existing dataset.')
+        is_view=conn.execute("SELECT count(*) FROM duckdb_views() WHERE view_name=? AND database_name=current_database() AND schema_name='main'",[name]).fetchone()[0]
+        aliases=[r[0] for r in conn.execute('SELECT name FROM _wb_aliases WHERE target=?',[name]).fetchall()]
+        conn.execute('BEGIN')
+        try:
+            for alias in aliases:conn.execute('DROP VIEW '+identifier(alias))
+            conn.execute('DROP '+('VIEW ' if is_view else 'TABLE ')+identifier(name))
+            conn.execute('DELETE FROM _wb_sources WHERE name=?',[name]);conn.execute('DELETE FROM _wb_aliases WHERE target=?',[name]);conn.execute('COMMIT')
+        except Exception:conn.execute('ROLLBACK');raise
+        return {'removed':name,'catalog':catalog(conn)}
     if action=='completion_metadata':
         rows=conn.execute("SELECT function_name,parameters,return_type,description FROM duckdb_functions() WHERE function_type IN ('scalar','aggregate','table','macro') AND NOT starts_with(function_name,'_') QUALIFY row_number() OVER (PARTITION BY function_name ORDER BY len(parameters))=1 ORDER BY function_name LIMIT 4000").fetchall()
         return {'functions':[{'name':r[0],'parameters':(r[1] or [])[:12],'returns':r[2] or '', 'description':(r[3] or '')[:220]} for r in rows]}

@@ -84,11 +84,9 @@ async function instructions(copy){
 }
 function setupWorkbench(){
   const registry=state.data.workspaces;
-  fillOptions('workspace-select',registry.items.map(item=>[item.id,item.name]));$('workspace-select').value=registry.selected;
   $('workspace-name').textContent=registry.items.find(item=>item.id===registry.selected).name;
   $('page-size').value=state.data.settings.default_page_size||100;
   $('setting-page-size').replaceChildren(...[...$('page-size').options].map(option=>option.cloneNode(true)));
-  bind('workspace-select','change',async()=>{try{await changeWorkspace({id:$('workspace-select').value});}catch(error){$('workspace-select').value=registry.selected;throw error;}});
   bind('new-workspace','click',()=>{$('new-workspace-name').value='';inlineError('workspace-error',null);$('workspace-dialog').showModal();$('new-workspace-name').focus();});
   bind('create-workspace','click',async()=>{try{await changeWorkspace({name:$('new-workspace-name').value});}catch(error){inlineError('workspace-error',error);}});
   bind('expand-results','click',()=>focusPanel(focusView?'':'results'));

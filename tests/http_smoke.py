@@ -47,6 +47,8 @@ def main():
         if bootstrap['active_job']:
             while not request('/api/jobs/' + bootstrap['active_job']).get('finished'):
                 time.sleep(.05)
+        if request('/api/bootstrap')['workspaces']['selected'] != 'primary':
+            request('/api/workspace', {'id':'primary'})
         request('/api/settings', {'memory_mb':256,'threads':1,'spill_gb':1,'timeout':30,'profile':'balanced'})
         try:
             request('/api/bootstrap', token=False)

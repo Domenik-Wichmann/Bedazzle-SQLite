@@ -19,3 +19,5 @@ publish/
 *.ndjson
 *.xlsx
 !examples/catalogs.csv
+!examples/products.csv
+!examples/offers.csv
