@@ -124,7 +124,7 @@ class Jobs:
         if not hw['total_mb']:
             memory = saved['memory_mb'] or 512
         if memory < 256:
-            raise ValueError('Less than 256 MB is available for the engine budget. Close some applications and retry.')
+            raise ValueError(f'Automatic budget is {memory} MB from {hw["available_mb"]} MB available RAM. A 256 MB buffer budget is required. Automatic uses at most 40% of available RAM: leave at least 640 MB available, then retry.')
         threads = saved['threads'] or max(1, min(4, hw['cpus'] // 2, memory // 512))
         if saved['profile'] == 'quiet':
             threads = min(threads, 2)
@@ -156,7 +156,7 @@ class Jobs:
         self.store.put('settings', clean)
 
     def submit(self, action, payload):
-        if action not in ('catalog', 'preview', 'open', 'convert', 'query', 'export', 'profile', 'count', 'explain', 'rename', 'module_run', 'module_merge', 'module_schema'):
+        if action not in ('catalog', 'preview', 'open', 'convert', 'query', 'export', 'profile', 'count', 'explain', 'rename', 'module_run', 'module_merge', 'module_schema', 'completion_metadata'):
             raise ValueError('Unknown operation.')
         with self.lock:
             if self.closed:
@@ -447,6 +447,8 @@ class Handler(BaseHTTPRequestHandler):
                       '/workbench.css': ('workbench.css', 'text/css; charset=utf-8'),
                       '/modules.js': ('modules.js', 'text/javascript; charset=utf-8'),
                       '/modules.css': ('modules.css', 'text/css; charset=utf-8'),
+                      '/sql_completion.js': ('sql_completion.js', 'text/javascript; charset=utf-8'),
+                      '/editor.js': ('editor.js', 'text/javascript; charset=utf-8'),
                       '/favicon.svg': ('favicon.svg', 'image/svg+xml')}
             if path in assets:
                 name, mime = assets[path]

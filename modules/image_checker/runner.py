@@ -25,11 +25,13 @@ def run(ctx,options):
     try:
         ctx.activity('Finding unique image URLs','Building a disk-backed queue from all rows and selected URL columns.',percent=None)
         cells=cells_sql(ctx,options)
-        cursor=ctx.conn.execute('SELECT DISTINCT coalesce(image_url,\'\') FROM ('+cells+') cells')
-        while True:
-            ctx.check_cancelled();batch=cursor.fetchmany(500)
-            if not batch:break
-            database.executemany('INSERT OR IGNORE INTO urls(url) VALUES (?)',batch);database.commit()
+        if not ctx.record.get('queue_ready'):
+            cursor=ctx.conn.execute('SELECT DISTINCT coalesce(image_url,\'\') FROM ('+cells+') cells')
+            while True:
+                ctx.check_cancelled();batch=cursor.fetchmany(2000)
+                if not batch:break
+                database.executemany('INSERT OR IGNORE INTO urls(url) VALUES (?)',batch);database.commit()
+            ctx.update(queue_ready=True)
         total=database.execute('SELECT count(*) FROM urls').fetchone()[0]
         completed=database.execute('SELECT count(*) FROM urls WHERE result IS NOT NULL').fetchone()[0]
         ctx.update(total=total,completed=completed)
@@ -76,6 +78,12 @@ def run(ctx,options):
         schema='{'+','.join(literal(key)+':'+literal(value) for key,value in SCHEMA.items())+'}'
         # Empty inputs still get a valid, fully typed report.
         raw=f'read_json({literal(json_path)}, format=\'newline_delimited\', columns={schema})' if total else '(SELECT '+','.join('NULL::'+value+' AS '+ident(key) for key,value in SCHEMA.items())+' WHERE false)'
+        # Parse JSON once. Both the per-cell join and duplicate-hash aggregation
+        # scan a typed columnar file, rather than parsing every JSON report twice.
+        typed=ctx.directory/'url_checks.parquet';partial=ctx.directory/'url_checks.partial'
+        partial.unlink(missing_ok=True)
+        ctx.conn.execute(f'COPY (SELECT * FROM {raw}) TO {literal(partial)} (FORMAT PARQUET, COMPRESSION ZSTD)')
+        partial.replace(typed);raw=f'read_parquet({literal(typed)})'
         compare=[]
         for expected,actual in [('expected_width','display_width'),('expected_height','display_height'),('expected_bytes','image_bytes')]:
             operator='>=' if expected!='expected_bytes' and options['dimension_rule']=='minimum' else '='

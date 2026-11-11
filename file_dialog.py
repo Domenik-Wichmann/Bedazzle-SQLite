@@ -32,7 +32,7 @@ def choose(mode, extension='csv', filename=''):
     data.lpstrTitle = 'Open a local data file' if mode == 'open' else 'Save full results'
     if mode == 'open':
         data.Flags |= 0x00001000
-        data.lpstrFilter = 'Data files\0*.csv;*.tsv;*.txt;*.parquet;*.pq;*.json;*.jsonl;*.ndjson\0All files\0*.*\0\0'
+        data.lpstrFilter = 'Data files\0*.csv;*.tsv;*.txt;*.parquet;*.pq;*.json;*.jsonl;*.ndjson;*.ndjsonl;*.psv;*.tab;*.dat;*.gz;*.zst;*.zstd\0All files\0*.*\0\0'
         function = ctypes.windll.comdlg32.GetOpenFileNameW
     else:
         if extension not in ('csv', 'tsv', 'parquet', 'json', 'ndjson'):

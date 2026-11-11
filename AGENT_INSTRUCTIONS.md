@@ -158,6 +158,10 @@ Click a grouped row’s arrow to expand a bounded preview of its underlying reco
 
 ## Results and exact totals
 
+Autocomplete appears while typing and is filtered by the current prefix. It includes schema names, table/column names, aliases, SQL keywords and common functions. Ctrl+Space loads/caches installed DuckDB function signatures, return types and descriptions. Use arrows then Tab/Enter to insert, Escape to dismiss. It replaces the current token and quotes identifiers; it does not append a whole name to an already typed prefix. Suggestions are suppressed in comments and strings. Common CTE projections and explicit CTE column lists work; complex/nested/recursive scope resolution remains best effort. Completion does not run edited SQL or fetch dataset values.
+
+Imports additionally accept PSV, TAB, DAT and NDJSONL, plus gzip/zstd compressed CSV/TSV/JSON-family files with compound filenames such as catalogs.csv.gz or events.jsonl.zst. PSV and TAB default to their expected delimiters; explicit delimiter overrides still work. All normal preview/import-as-Parquet/export features apply. ZIP archives, Excel and arbitrary binary formats are not included in this update.
+
 Use the corner expand icon on the editor or results to focus that panel. Compact Editor / Results tabs switch between them; the restore icon or Escape returns to the split. Drag the divider to resize both cards within the screen. Long SQL scrolls inside its editor and does not enlarge the card. The top-left menu button hides the sidebar; Open file and Import as Parquet are below the sidebar brand.
 
 - Initial default page size: 100 rows. Available sizes: 100, 250, 500, 1,000, 5,000, 10,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000. Performance & settings saves the default independently for each workspace.

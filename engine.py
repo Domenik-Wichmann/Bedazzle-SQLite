@@ -43,17 +43,23 @@ def local_file(value):
     return path
 
 
+def file_kind(path):
+    suffixes=path.suffixes
+    return (suffixes[-2] if len(suffixes)>1 and suffixes[-1].lower() in ('.gz','.zst','.zstd') else path.suffix).lower()
+
+
 def reader(path, options=None):
     options = options or {}
-    ext = path.suffix.lower()
+    ext = file_kind(path)
     location = literal(path.as_posix())
     if ext in ('.parquet', '.pq'):
         return f'read_parquet({location})'
-    if ext in ('.json', '.jsonl', '.ndjson'):
+    if ext in ('.json', '.jsonl', '.ndjson', '.ndjsonl'):
         return f'read_json_auto({location})'
-    if ext not in ('.csv', '.tsv', '.txt'):
-        raise ValueError('Open CSV, TSV, Parquet, JSON, JSONL or NDJSON files.')
+    if ext not in ('.csv', '.tsv', '.txt', '.psv', '.tab', '.dat'):
+        raise ValueError('Open delimited text, Parquet, JSON/JSONL/NDJSON/NDJSONL, or gzip/zstd compressed text files.')
     delim = options.get('delimiter', 'auto')
+    if delim=='auto' and ext in ('.tsv','.tab','.psv'):delim='|' if ext=='.psv' else '\t'
     delim = '\t' if delim == 'tab' else delim
     if delim != 'auto' and len(delim) != 1:
         raise ValueError('Choose a single-character delimiter or auto.')
@@ -145,7 +151,7 @@ def available_name(conn, stem, exact=False):
 def attach_source(conn, path, options=None, name=None):
     name = available_name(conn, name or path.stem, exact=bool(name))
     expression = reader(path, options)
-    if path.suffix.lower() in ('.csv','.tsv','.txt'):
+    if file_kind(path) in ('.csv','.tsv','.txt','.psv','.tab','.dat'):
         select_sql=csv_recipe(conn,path,expression)
     else:
         describe(conn, f'SELECT * FROM {expression}')
@@ -321,6 +327,9 @@ def copy_to(conn, sql, target, options, job_id):
 
 
 def perform(conn, action, payload, job_id, on_preview=None, module_context=None):
+    if action=='completion_metadata':
+        rows=conn.execute("SELECT function_name,parameters,return_type,description FROM duckdb_functions() WHERE function_type IN ('scalar','aggregate','table','macro') AND NOT starts_with(function_name,'_') QUALIFY row_number() OVER (PARTITION BY function_name ORDER BY len(parameters))=1 ORDER BY function_name LIMIT 4000").fetchall()
+        return {'functions':[{'name':r[0],'parameters':(r[1] or [])[:12],'returns':r[2] or '', 'description':(r[3] or '')[:220]} for r in rows]}
     if action in ('module_run', 'module_merge', 'module_schema'):
         from module_runtime import dispatch
         return dispatch(conn, action, payload, job_id, module_context or {})

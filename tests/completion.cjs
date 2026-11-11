@@ -1,0 +1,15 @@
+const assert=require('assert/strict'),{complete}=require('../ui/sql_completion.js');
+const catalog=[{name:'My catalogs',columns:[{name:'url',type:'VARCHAR'},{name:'client',type:'VARCHAR'},{name:'price',type:'DOUBLE'}]},{name:'clients',columns:[{name:'client',type:'VARCHAR'},{name:'label',type:'VARCHAR'}]}];
+const suggest=(text)=>{const caret=text.indexOf('|');return complete(text.replace('|',''),caret,catalog,[{name:'count',parameters:['value'],returns:'BIGINT'}],true);};
+assert(suggest('SELECT cl| FROM "My catalogs"').some(x=>x.label==='client'&&x.kind==='column'));
+assert(suggest('SELECT c.u| FROM "My catalogs" AS c').some(x=>x.insert==='"url"'));
+assert(suggest('SELECT * FROM cli|').every(x=>x.kind==='table'));
+assert(suggest("SELECT 'cli|'").length===0);assert(suggest('SELECT 1 -- cli|').length===0);
+assert(suggest('SELECT /* nested /* comment */ cli| */ 1').length===0);
+assert(suggest('WITH q AS (SELECT url AS image_url FROM "My catalogs") SELECT q.im| FROM q').some(x=>x.insert==='"image_url"'));
+assert(suggest('WITH q(a,b) AS (SELECT url,client FROM "My catalogs") SELECT q.a| FROM q').some(x=>x.label==='a'));
+assert(suggest('SELECT cl| FROM "My catalogs" c JOIN clients x ON c.client=x.client').filter(x=>x.kind==='column'&&x.label==='client').every(x=>x.insert.includes('.')));
+assert(suggest('SELECT cou|').some(x=>x.kind==='function'&&x.insert==='count()'));
+assert(suggest('SELECT "My c|" FROM clients').some(x=>x.insert==='"My catalogs"'));
+const start=performance.now();for(let n=0;n<1000;n++)suggest('SELECT c.u| FROM "My catalogs" c');
+console.log('PASS: aliases, CTEs, quoted names, ambiguous joins, keywords/functions, comment/string suppression; median-scale lookup '+((performance.now()-start)/1000).toFixed(3)+' ms');

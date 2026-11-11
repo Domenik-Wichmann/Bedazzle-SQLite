@@ -187,7 +187,10 @@ function closeTab(id){
 }
 function updateLines() {
   const count=$('sql-editor').value.split('\n').length;
-  $('line-numbers').textContent = Array.from({length: count}, (_, i) => i+1).join('\n');
+  if($('line-numbers').dataset.count!==String(count)){
+    $('line-numbers').textContent = Array.from({length: count}, (_, i) => i+1).join('\n');
+    $('line-numbers').dataset.count=String(count);
+  }
   $('line-numbers').style.flexBasis=Math.max(48,28+String(count).length*8)+'px';
 }
 async function selectDataset(name) {
@@ -541,11 +544,7 @@ async function profile() {
   const output=await runJob('profile',{name:state.selected});state.profile=output.profile;
   $('profile-table').replaceChildren(tableFor(output.profile));setResultView('profile');
 }
-function autocomplete() {
-  const names=[...new Set([...state.data.catalog.map(item=>item.name),...state.data.catalog.flatMap(item=>item.columns.map(c=>c.name))])].slice(0,100);
-  $('suggestions').replaceChildren(...names.map(name=>node('button',{onclick:()=>{insertSQL(sqlName(name));show('suggestions',false);}},name)));
-  show('suggestions',!!names.length);
-}
+
 function openRename(name=state.selected){
   if(state.busy)return toast('Wait for the current operation or cancel it first.');
   if(!name)return toast('Open a dataset first.');
@@ -594,7 +593,7 @@ async function init() {
   bind('builder-dataset','change',()=>{state.selected=$('builder-dataset').value;builderColumns();});
   bind('view-generated','click',()=>{setEditor(buildQuery().sql);setMode('sql');});
   bind('run-query','click',executeEditor);bind('cancel-job','click',cancelJob);
-  bind('sql-editor','input',()=>{updateLines();localStorage.setItem(draftKey('editor'),$('sql-editor').value);cacheTab();persistTabs();show('suggestions',false);});
+  bind('sql-editor','input',()=>{updateLines();clearTimeout(editorSaveTimer);editorSaveTimer=setTimeout(flushDrafts,120);show('suggestions',false);});
   $('sql-editor').addEventListener('scroll',()=>{$('line-numbers').scrollTop=$('sql-editor').scrollTop;});
   $('sql-editor').addEventListener('keydown',event=>{
     if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();executeEditor().catch(report);}
@@ -615,9 +614,9 @@ async function init() {
   bind('performance-nav','click',showSettings);bind('save-settings','click',saveSettings);
   bind('library-nav','click',()=>openLibrary('saved'));bind('history-nav','click',()=>openLibrary('history'));bind('library-search','input',renderLibrary);
   bind('save-query','click',saveDialog);bind('confirm-save','click',saveQuery);bind('show-schema','click',showSchema);bind('explain-query','click',explain);
-  bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
+  bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;flushDrafts();clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
   setupWorkbench();
-  setupModules();
+  setupModules();setupEditor();
   if(state.data.catalog.length)workArea();
   // Restore metadata only. Never re-run saved SQL or expensive scans on launch.
   if(state.data.active_job){
@@ -638,4 +637,4 @@ async function init() {
     if(last)await selectDataset(last.name);
   }
 }
-init().catch(error=>{report(error);$('workspace-subtitle').textContent=error.message;});
+document.addEventListener('DOMContentLoaded',()=>init().catch(error=>{report(error);$('workspace-subtitle').textContent=error.message;}));
