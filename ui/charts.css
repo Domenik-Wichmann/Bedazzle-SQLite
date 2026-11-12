@@ -20,3 +20,9 @@
 .cs-detached-window{display:block!important;height:100dvh;overflow:hidden;margin:0;padding:0}.cs-detached-window #chart-studio{box-shadow:none}
 @media(max-width:1050px){#chart-studio .cs-layout{grid-template-columns:minmax(0,1fr) 280px}#chart-studio .cs-toolbar{gap:5px}#chart-studio .cs-toolbar .button{padding:6px 8px;font-size:11px}}
 @media(max-width:700px){#chart-studio{padding:8px}#chart-studio .cs-layout{grid-template-columns:minmax(0,1fr)}#chart-studio .cs-controls{position:absolute;top:0;right:0;bottom:0;width:min(320px,85vw);padding:12px;background:var(--surface,#fff);box-shadow:-8px 0 24px #10203025;z-index:3}#chart-studio .cs-toolbar h2{font-size:21px}#chart-studio .cs-toolbar .button{font-size:10px}}
+#chart-studio{inset:0;margin:auto;width:95vw;max-width:95vw;height:94dvh;max-height:94dvh;border:1px solid var(--border,#dce5d3);border-radius:18px;box-shadow:0 18px 80px #0006}
+#chart-studio::backdrop{background:#0c142a80;backdrop-filter:blur(3px)}
+.cs-detached-window #chart-studio{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border:0;border-radius:0;margin:0}
+.cs-live{font-size:11px;color:var(--muted,#687588);white-space:nowrap}.cs-close{font-size:25px;line-height:1;width:30px;height:30px;border-radius:6px;flex:0 0 30px}.cs-close:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
+#cs-canvas,.cs-dashboard-canvas{background-color:var(--surface,#fff)}
+.cs-export-dialog{width:min(460px,92vw);border-radius:14px}.cs-export-dialog .cs-toolbar{margin-bottom:16px}.cs-export-dialog label{display:flex;flex-direction:column;gap:6px;margin:16px 0}.cs-export-dialog p{font-size:12px;line-height:1.7}.cs-export-dialog select{width:100%;padding:8px}.cs-export-dialog input[type=color],.cs-controls input[type=color]{min-height:38px;padding:4px}.cs-controls input[type=file]{font-size:11px}

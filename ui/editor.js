@@ -597,12 +597,65 @@ var eo={},no={};var io,ro=function(){function t(t,e,n){var i=this;this._sleepAft
 const chartTypes={bar:'Column',horizontal:'Horizontal bar',stacked:'Stacked column',line:'Line',smooth:'Smooth line',area:'Area','stacked-area':'Stacked area',pie:'Pie',donut:'Donut',rose:'Rose',scatter:'Scatter',histogram:'Histogram',boxplot:'Box plot',heatmap:'Heatmap',radar:'Radar',treemap:'Treemap',funnel:'Funnel'};
 const chartPalettes={jewel:['#7765da','#23aaa3','#e6a243','#de668f','#4c8ed9','#8bb953','#ae77bd','#db7853'],ocean:['#1565c0','#0097a7','#26a69a','#5c6bc0','#42a5f5','#80cbc4'],sunset:['#d85b67','#ee9251','#eab94d','#b46fa5','#7c78c8'],forest:['#218570','#69a65c','#abb956','#368eaa','#b6905d']};
 const chartStudio={source:null,info:null,id:null,preview:null,chart:null,cards:[],dirty:false};
+const csLive={timer:null,running:null,dataKey:null};
+const csRendered=new WeakMap();
 const csAppearance={legend:true,legendPosition:'bottom',grid:true,tooltips:true,zoom:true,zero:true,connectGaps:false,reverse:false,
-  numberStyle:'number',yScale:'linear',decimals:2,rotation:0,fontSize:12,lineWidth:3,markerSize:5,areaOpacity:.2,barWidth:65,bins:0,donutHole:42,exportScale:2};
-const csNumericBounds={decimals:[0,8],rotation:[0,90],fontSize:[10,24],lineWidth:[1,8],markerSize:[0,24],areaOpacity:[0,1],barWidth:[10,95],bins:[0,100],donutHole:[10,75],exportScale:[1,4]};
+  numberStyle:'number',yScale:'linear',decimals:2,rotation:0,fontSize:12,lineWidth:3,markerSize:5,areaOpacity:.2,barWidth:65,bins:0,donutHole:42,exportScale:2,
+  background:'auto',backgroundColor:'#ffffff',backgroundFill:'solid',backgroundSecond:'#7765da',backgroundGradient:'linear',backgroundAngle:135,
+  backgroundPattern:'diagonal',backgroundSpacing:24,backgroundWeight:3,backgroundOpacity:.2,
+  backgroundImage:'',backgroundImageName:'',backgroundImageFit:'cover',backgroundImageOpacity:1,backgroundOverlay:0};
+const csNumericBounds={decimals:[0,8],rotation:[0,90],fontSize:[10,24],lineWidth:[1,8],markerSize:[0,24],areaOpacity:[0,1],barWidth:[10,95],bins:[0,100],donutHole:[10,75],exportScale:[1,4],backgroundAngle:[0,360],backgroundSpacing:[6,120],backgroundWeight:[1,20],backgroundOpacity:[0,1],backgroundImageOpacity:[0,1],backgroundOverlay:[0,1]};
 function csDisplayConfig(config){const c={...csAppearance,...config};for(const [key,[min,max]] of Object.entries(csNumericBounds)){const n=Number(c[key]);c[key]=Number.isFinite(n)?Math.max(min,Math.min(max,n)):csAppearance[key];}return c;}
+function csColors(config){
+  const c=csDisplayConfig(config),mode=c.background==='auto'?(document.documentElement.dataset.theme||'light'):c.background;
+  const base=mode==='dark'?'#171d28':mode==='light'?'#ffffff':/^#[0-9a-f]{6}$/i.test(c.backgroundColor)?c.backgroundColor:'#ffffff';
+  const rgb=[1,3,5].map(i=>parseInt(base.slice(i,i+2),16)/255),dark=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722<.45;
+  return {base,dark,text:dark?'#e5eaf4':'#24324b',muted:dark?'#a9b5cb':'#617086',grid:dark?'#344155':'#e5eaf2',panel:dark?'#222c3d':'#ffffff'};
+}
+function csBackgroundSvg(config,width,height){
+  const c=csDisplayConfig(config),t=csColors(c),ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('xmlns',ns);svg.setAttribute('width',width);svg.setAttribute('height',height);svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
+  const add=(tag,attrs,parent=svg)=>{const el=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,String(v));parent.append(el);return el;};
+  add('rect',{width:'100%',height:'100%',fill:t.base});const second=/^#[0-9a-f]{6}$/i.test(c.backgroundSecond)?c.backgroundSecond:'#7765da';
+  if(c.backgroundFill==='gradient'){
+    const defs=add('defs',{}),angle=(c.backgroundAngle-90)*Math.PI/180,dx=Math.cos(angle)*.5,dy=Math.sin(angle)*.5;
+    const gradient=c.backgroundGradient==='radial'?add('radialGradient',{id:'cs-bg-gradient',cx:'.5',cy:'.5',r:'.7'},defs):add('linearGradient',{id:'cs-bg-gradient',x1:.5-dx,y1:.5-dy,x2:.5+dx,y2:.5+dy},defs);
+    add('stop',{offset:'0%', 'stop-color':t.base},gradient);add('stop',{offset:'100%','stop-color':second},gradient);add('rect',{width:'100%',height:'100%',fill:'url(#cs-bg-gradient)'});
+  }else if(c.backgroundFill==='pattern'){
+    const s=c.backgroundSpacing,w=Math.min(c.backgroundWeight,s/2),defs=add('defs',{}),pattern=add('pattern',{id:'cs-bg-pattern',width:s,height:s,patternUnits:'userSpaceOnUse'},defs),kind=c.backgroundPattern;
+    if(kind==='dots')add('circle',{cx:s/2,cy:s/2,r:w,fill:second},pattern);
+    else if(kind==='checker'){add('rect',{width:s/2,height:s/2,fill:second},pattern);add('rect',{x:s/2,y:s/2,width:s/2,height:s/2,fill:second},pattern);}
+    else if(kind==='vertical')add('rect',{width:w,height:s,fill:second},pattern);
+    else if(kind==='horizontal')add('rect',{width:s,height:w,fill:second},pattern);
+    else {const d=kind==='grid'?`M0 0H${s}M0 0V${s}`:kind==='crosshatch'?`M0 0L${s} ${s}M0 ${s}L${s} 0`:`M${-s/2} ${s/2}L${s/2} ${-s/2}M0 ${s}L${s} 0M${s/2} ${s*1.5}L${s*1.5} ${s/2}`;add('path',{d,stroke:second,'stroke-width':w,fill:'none'},pattern);}
+    add('rect',{width:'100%',height:'100%',fill:'url(#cs-bg-pattern)',opacity:c.backgroundOpacity});
+  }else if(c.backgroundFill==='image'&&/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(c.backgroundImage)){
+    if(c.backgroundImageFit==='tile'){
+      const defs=add('defs',{}),s=c.backgroundSpacing*8,pattern=add('pattern',{id:'cs-bg-image',width:s,height:s,patternUnits:'userSpaceOnUse'},defs);
+      add('image',{href:c.backgroundImage,width:s,height:s,preserveAspectRatio:'xMidYMid meet'},pattern);add('rect',{width:'100%',height:'100%',fill:'url(#cs-bg-image)',opacity:c.backgroundImageOpacity});
+    }else add('image',{href:c.backgroundImage,width,height,opacity:c.backgroundImageOpacity,preserveAspectRatio:c.backgroundImageFit==='stretch'?'none':c.backgroundImageFit==='contain'?'xMidYMid meet':'xMidYMid slice'});
+    if(c.backgroundOverlay)add('rect',{width:'100%',height:'100%',fill:t.base,opacity:c.backgroundOverlay});
+  }
+  return svg;
+}
+function csApplyBackground(target,config){
+  const c=csDisplayConfig(config),base=csColors(c).base;target.style.backgroundColor=base;target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';
+  if(c.backgroundFill==='image'&&/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(c.backgroundImage)){
+    const opacity=1-c.backgroundImageOpacity*(1-c.backgroundOverlay),rgb=[1,3,5].map(i=>parseInt(base.slice(i,i+2),16)).join(','),veil=`rgba(${rgb},${opacity})`;
+    target.style.backgroundImage=`linear-gradient(${veil},${veil}),url("${c.backgroundImage}")`;target.style.backgroundSize='100% 100%,'+(c.backgroundImageFit==='stretch'?'100% 100%':c.backgroundImageFit==='tile'?c.backgroundSpacing*8+'px auto':c.backgroundImageFit);target.style.backgroundRepeat='no-repeat,'+(c.backgroundImageFit==='tile'?'repeat':'no-repeat');
+  }else{const svg=csBackgroundSvg(c,Math.max(1,target.clientWidth),Math.max(1,target.clientHeight));target.style.backgroundImage='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(svg))+'")';target.style.backgroundSize='100% 100%';}
+}
+async function csUploadBackground(file){
+  if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||file.size>512*1024)throw new Error('Choose a PNG, JPEG, WebP or GIF up to 512 KB.');
+  const value=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Could not read this image.'));reader.readAsDataURL(file);});
+  const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('This image could not be opened.'));img.src=value;});
+  if(img.naturalWidth*img.naturalHeight>25000000)throw new Error('Choose an image smaller than 25 megapixels.');
+  $('cs-backgroundImage').value=value;$('cs-backgroundImageName').value=file.name;$('cs-backgroundFill').value='image';$('cs-background-message').textContent=file.name;csSchedule();
+}
+function csDataKey(source,c){return JSON.stringify([source,...['type','x','ys','split','aggregate','bucket','sort','limit','filter'].map(k=>c[k])]);}
+function csSchedule(){clearTimeout(csLive.timer);chartStudio.dirty=true;inlineError('cs-error',null);$('cs-live').textContent='Updating…';csLive.timer=setTimeout(()=>csPreview().catch(error=>inlineError('cs-error',error)),180);}
 const csPortal={child:null,moved:[],timer:null,restoring:false,pair:null};
-function csPair(){return csPortal.pair||(csPortal.pair=window.bedazzlePair||{instance:crypto.randomUUID(),colorName:'Purple',color:'#7765da'});}
+function csPair(){return window.bedazzlePair||csPortal.pair||(csPortal.pair={instance:crypto.randomUUID(),colorName:'Purple',color:'#7765da'});}
 function csColor(id){
   return node('button',{id,type:'button',class:'cs-link-color',onclick:event=>{
     if(csPortal.child){if(event.detail===0)csRestore();else (event.currentTarget.ownerDocument===document?csPortal.child:window).focus();}
@@ -616,36 +669,45 @@ function csUpdateLink(){
 function csShow(){
   csUpdateLink();if(!$('chart-studio').open)$('chart-studio').showModal();
   if(csPortal.child&&!csPortal.child.closed)csPortal.child.focus();
+  csReflow();
 }
+function csResizeAll(){for(const chart of [quickChart,chartStudio.chart,...chartStudio.cards]){if(!chart||chart.isDisposed())continue;const el=chart.getDom();if(!el.isConnected||!el.clientWidth||!el.clientHeight)continue;chart.resize({width:el.clientWidth,height:el.clientHeight});const meta=csRendered.get(chart);if(meta)csApplyBackground(el,meta.config);}}
+function csReflow(){const studio=$('chart-studio');if(!studio.isConnected||!studio.open||studio.style.visibility==='hidden')return;studio.getBoundingClientRect();csResizeAll();studio.dataset.layoutReady='true';}
 function csRedraw(){
   if(chartStudio.preview&&$('cs-canvas'))chartStudio.chart=csDraw($('cs-canvas'),chartStudio.preview,chartStudio.preview.config);
 }
 function csRestore(close=true,showStudio=true){
   if(!csPortal.child||csPortal.restoring)return;
-  csPortal.restoring=true;clearInterval(csPortal.timer);const previous=csPortal.child;csPortal.child=null;
+  csPortal.restoring=true;clearInterval(csPortal.timer);csPortal.observer?.disconnect();const previous=csPortal.child;csPortal.child=null;
   for(const {element,marker} of csPortal.moved){if(element.open)element.close();marker.replaceWith(element);}
   csPortal.moved=[];window.bedazzleChartWindow=null;
+  $('chart-studio').style.visibility='';
   $('cs-owner-link').classList.add('hidden');$('cs-owner-return').classList.add('hidden');
   $('cs-detach').textContent='↗';$('cs-detach').title='Open Chart Studio in a new tab';$('cs-detach').setAttribute('aria-label','Open Chart Studio in a new tab');
   csPortal.restoring=false;if(close&&!previous.closed)previous.close();
   if(showStudio){csShow();csRedraw();}
 }
-function csClose(){if(csPortal.child)csRestore(true,false);else $('chart-studio').close();}
+function csClose(){clearTimeout(csLive.timer);if(csPortal.child)csRestore(true,false);else $('chart-studio').close();}
 function csDetach(){
   if(csPortal.child&&!csPortal.child.closed){csRestore();return;}
   const child=window.open('about:blank','bedazzle-chart-'+csPair().instance);
   if(!child){$('cs-status').textContent='Allow pop-ups for Bedazzle to open Chart Studio in a new tab.';return;}
   csPortal.child=child;
   try{
-    const doc=child.document;doc.documentElement.lang='en';doc.head.replaceChildren();doc.body.replaceChildren();doc.body.className='cs-detached-window';
+    const doc=child.document;doc.open();doc.write('<!doctype html><html lang="en"><head><title>Chart Studio</title></head><body></body></html>');doc.close();doc.documentElement.dataset.theme=document.documentElement.dataset.theme||'light';doc.body.className='cs-detached-window';const stylesReady=[];
     doc.head.append(node('meta',{name:'viewport',content:'width=device-width,initial-scale=1'}));
-    for(const link of document.querySelectorAll('link[rel="stylesheet"],link[rel="icon"]')){const copy=link.cloneNode(true);copy.href=link.href;copy.addEventListener('load',()=>chartStudio.chart?.resize());doc.head.append(copy);}
+    // Copy the loaded CSS into this document before moving the live panel.
+    // This avoids a second stylesheet fetch/paint racing the chart's geometry.
+    let adopted=false;
+    try{const sheets=[...document.styleSheets].map(sheet=>{const copy=new child.CSSStyleSheet();copy.replaceSync([...sheet.cssRules].map(rule=>rule.cssText).join('\n'));return copy;});doc.adoptedStyleSheets=sheets;adopted=true;}catch(_){/* Older browsers load the same local styles below. */}
+    for(const link of document.querySelectorAll('link[rel="stylesheet"],link[rel="icon"]')){if(adopted&&link.rel==='stylesheet')continue;const copy=link.cloneNode(true);copy.href=link.href;if(link.rel==='stylesheet')stylesReady.push(new Promise(resolve=>{copy.addEventListener('load',resolve,{once:true});copy.addEventListener('error',resolve,{once:true});}));doc.head.append(copy);}
     window.bedazzleChartWindow=doc;
-    for(const id of ['chart-studio','chart-dashboards']){const element=document.getElementById(id),marker=document.createComment('Chart Studio return position');if(element.open)element.close();element.before(marker);csPortal.moved.push({element,marker});doc.body.append(element);}
+    for(const id of ['chart-studio','chart-dashboards','cs-export-dialog']){const element=document.getElementById(id),marker=document.createComment('Chart Studio return position');if(element.open)element.close();element.before(marker);csPortal.moved.push({element,marker});doc.body.append(element);}
     $('cs-detach').textContent='↙';$('cs-detach').title='Bring Chart Studio back';$('cs-detach').setAttribute('aria-label','Bring Chart Studio back');
     $('cs-owner-link').classList.remove('hidden');$('cs-owner-return').classList.remove('hidden');
-    csShow();csRedraw();
-    child.addEventListener('resize',()=>chartStudio.chart?.resize());
+    $('chart-studio').style.visibility='hidden';$('chart-studio').dataset.layoutReady='false';csShow();
+    Promise.all(stylesReady).then(()=>{if(csPortal.child!==child||child.closed)return;$('chart-studio').getBoundingClientRect();csRedraw();$('chart-studio').style.visibility='';csReflow();});
+    csPortal.observer=new child.ResizeObserver(csResizeAll);csPortal.observer.observe($('cs-canvas'));child.addEventListener('resize',csResizeAll);
     child.addEventListener('pagehide',()=>csRestore(false),{once:true});
     csPortal.timer=setInterval(()=>{if(csPortal.child?.closed)csRestore(false);else csUpdateLink();},300);
   }catch(error){csRestore();throw error;}
@@ -768,21 +830,42 @@ function chartOption(data,c){
     if(series.type==='scatter')series.symbolSize=Math.max(2,c.markerSize);
     if(series.type==='bar')series.barMaxWidth=c.barWidth+'%';
   }
+  const theme=csColors(c);option.backgroundColor='transparent';option.textStyle.color=theme.text;
+  option.title.textStyle.color=theme.text;option.title.subtextStyle.color=theme.muted;
+  option.legend.textStyle={color:theme.text};option.legend.inactiveColor=theme.muted;
+  Object.assign(option.tooltip,{backgroundColor:theme.panel,borderColor:theme.grid,textStyle:{color:theme.text}});
+  for(const axis of [option.xAxis,option.yAxis].filter(Boolean)){axis.axisLabel={...axis.axisLabel,color:theme.muted};axis.nameTextStyle={color:theme.muted};axis.axisLine={lineStyle:{color:theme.muted}};axis.splitLine={...axis.splitLine,lineStyle:{color:theme.grid}};}
+  if(option.radar)Object.assign(option.radar,{axisName:{color:theme.text},axisLine:{lineStyle:{color:theme.grid}},splitLine:{lineStyle:{color:theme.grid}},splitArea:{areaStyle:{color:[theme.base,theme.panel]}}});
+  if(option.visualMap){option.visualMap.textStyle={color:theme.text};option.visualMap.inRange.color=[theme.base,colors[0]];}
+  for(const series of option.series){if(series.type==='pie')series.itemStyle.borderColor=theme.base;if(series.label)series.label.color=theme.text;}
   return option;
 }
 function csDraw(target,data,config){
+  const option=chartOption(data,config);
   const existing=echarts.getInstanceByDom(target);if(existing)existing.dispose();
-  target.replaceChildren();const option=chartOption(data,config),chart=echarts.init(target,null,{renderer:'svg'});chart.setOption(option);return chart;
+  target.replaceChildren();csApplyBackground(target,config);const chart=echarts.init(target,null,{renderer:'svg',width:target.clientWidth,height:target.clientHeight});chart.setOption(option);csRendered.set(chart,{data,config});return chart;
 }
 function csDownload(blob,name){const url=URL.createObjectURL(blob),a=node('a',{href:url,download:name}),doc=csPortal.child&&!csPortal.child.closed?csPortal.child.document:document;doc.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function csExport(chart,type,title,scale=2){
   if(!chart||chart.isDisposed())throw new Error('Draw a chart first.');
-  const svg=chart.renderToSVGString(),name=(title||'Bedazzle chart').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_');
+  const meta=csRendered.get(chart),snapshot={...meta,width:chart.getWidth(),height:chart.getHeight()},choice=await csChooseExport(type,meta.config);
+  if(!choice)return;
+  const config={...snapshot.config,...choice},temporary=echarts.init(null,null,{renderer:'svg',ssr:true,width:snapshot.width,height:snapshot.height});
+  let svg;
+  try{temporary.setOption(chartOption(snapshot.data,config));const parsed=new DOMParser().parseFromString(temporary.renderToSVGString(),'image/svg+xml'),root=parsed.documentElement,bg=csBackgroundSvg(config,snapshot.width,snapshot.height);root.insertBefore(parsed.importNode(bg,true),root.firstChild);svg=new XMLSerializer().serializeToString(root);}finally{temporary.dispose();}
+  const name=(title||'Bedazzle chart').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_');
   if(type==='svg')return csDownload(new Blob([svg],{type:'image/svg+xml'}),name+'.svg');
   const img=new Image();
   await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('The browser could not convert this chart to PNG.'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);});
-  const canvas=document.createElement('canvas');canvas.width=chart.getWidth()*scale;canvas.height=chart.getHeight()*scale;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));csDownload(blob,name+'.png');
+  const canvas=document.createElement('canvas');canvas.width=snapshot.width*scale;canvas.height=snapshot.height*scale;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));csDownload(blob,name+'.png');
 }
+function csChooseExport(type,config){
+  const dialog=$('cs-export-dialog');if(dialog.open)throw new Error('An export choice is already open.');
+  dialog.returnValue='';$('cs-export-appearance').value='current';$('cs-export-color').value=csColors(config).base;$('cs-export-color').disabled=true;$('cs-export-confirm').textContent='Export '+type.toUpperCase();
+  $('cs-export-note').textContent='Current chart: '+(csColors(config).dark?'dark':'light')+' appearance. Current background preserves your gradients, patterns and images.';
+  return new Promise(resolve=>{dialog.addEventListener('close',()=>{const mode=$('cs-export-appearance').value;resolve(dialog.returnValue==='export'?(mode==='current'?{}:{background:mode,backgroundFill:'solid',backgroundColor:$('cs-export-color').value}):null);},{once:true});dialog.showModal();});
+}
+async function csStudioExport(type){await csPreview();return csExport(chartStudio.chart,type,chartStudio.preview.config.title,chartStudio.preview.config.exportScale||2);}
 function quickPrepare(){
   if(!state.result)return;
   const previous=$('chart-label').value,selected=[...$('chart-value').selectedOptions].map(o=>o.value),cols=state.result.columns;
@@ -808,21 +891,32 @@ function quickRender(){
   }catch(e){echarts.getInstanceByDom(el)?.dispose();el.replaceChildren(node('p',{class:'chart-empty'},e.message));quickChart=null;}
 }
 function csConfig(){const get=id=>$('cs-'+id).value,appearance={};for(const [key,value] of Object.entries(csAppearance)){const el=$('cs-'+key);appearance[key]=typeof value==='boolean'?el.checked:typeof value==='number'?Number(el.value):el.value;}return csDisplayConfig({...appearance,type:get('type'),title:get('title'),subtitle:get('subtitle'),x:get('x'),ys:[...$('cs-ys').selectedOptions].map(o=>o.value),split:get('split'),aggregate:get('aggregate'),bucket:get('bucket'),sort:get('sort'),limit:Number(get('limit')),filter:get('filter'),dashboard:get('dashboard'),palette:get('palette'),xTitle:get('xTitle'),yTitle:get('yTitle'),showLabels:$('cs-labels').checked});}
-function csSetConfig(c){c=csDisplayConfig(c);for(const key of ['type','title','subtitle','x','split','aggregate','bucket','sort','limit','filter','dashboard','palette','xTitle','yTitle'])if(c[key]!==undefined)$('cs-'+key).value=c[key];for(const [key,value] of Object.entries(csAppearance)){const el=$('cs-'+key);if(typeof value==='boolean')el.checked=!!c[key];else el.value=c[key];}for(const o of $('cs-ys').options)o.selected=c.ys.includes(o.value);csSyncValues($('cs-ys'));$('cs-labels').checked=!!c.showLabels;}
+function csSetConfig(c){c=csDisplayConfig(c);for(const key of ['type','title','subtitle','x','split','aggregate','bucket','sort','limit','filter','dashboard','palette','xTitle','yTitle'])if(c[key]!==undefined)$('cs-'+key).value=c[key];for(const [key,value] of Object.entries(csAppearance)){const el=$('cs-'+key);if(typeof value==='boolean')el.checked=!!c[key];else el.value=c[key];}for(const o of $('cs-ys').options)o.selected=c.ys.includes(o.value);csSyncValues($('cs-ys'));$('cs-labels').checked=!!c.showLabels;$('cs-background-message').textContent=c.backgroundImageName||'Local PNG, JPEG, WebP or GIF ? up to 512 KB.';}
 async function csJob(payload){
   try{return await runJob('chart_studio',payload);}
   catch(error){if(/Unknown operation/i.test(error.message))throw new Error('Restart Bedazzle to enable Chart studio, then reopen this page. The running server is from before the chart update.');throw error;}
 }
-function csBusy(value){$('cs-controls').inert=value;$('cs-save').disabled=value;$('cs-update').disabled=value;}
+function csBusy(value){$('cs-canvas').setAttribute('aria-busy',String(value));$('cs-live').textContent=value?'Updating…':'Live preview';}
 async function csPreview(){
   if(!chartStudio.source)throw new Error('Send query results to Chart studio first.');
-  csBusy(true);$('cs-status').textContent='Reading the frozen result and building the chart…';
-  try{const data=await csJob({op:'preview',source:chartStudio.source,config:csConfig()});chartStudio.preview=data;
-    chartStudio.chart=csDraw($('cs-canvas'),data,data.config);chartStudio.dirty=false;
+  clearTimeout(csLive.timer);
+  if(csLive.running){await csLive.running;if(chartStudio.dirty)return csPreview();return;}
+  let retry=false;
+  const task=(async()=>{
+    csBusy(true);const source=chartStudio.source,c=csConfig(),key=csDataKey(source,c);
+    let data;
+    if(chartStudio.preview&&csLive.dataKey===key)data={...chartStudio.preview,config:c};
+    else{while(state.busy)await pause(100);data=await csJob({op:'preview',source,config:c});}
+    if(source!==chartStudio.source||key!==csDataKey(chartStudio.source,csConfig())){retry=true;return;}
+    data={...data,config:csConfig()};
+    chartStudio.chart=csDraw($('cs-canvas'),data,data.config);chartStudio.preview=data;csLive.dataKey=key;chartStudio.dirty=false;
     $('cs-status').textContent=`${data.info.rows.toLocaleString()} source rows · ${data.matching_rows.toLocaleString()} match · ${data.rows.length} ${data.raw?'observations':'grouped points'}${data.truncated?' · DISPLAY LIMITED to '+data.limit+'; narrow your query/filter to include the rest':''}${data.invalid.some(n=>n)?' · Non-numeric / nonfinite values ignored: '+data.config.ys.map((y,i)=>y+' '+data.invalid[i]).join(', '):''}${data.config.type==='boxplot'?' · Whiskers show minimum and maximum':''}`;
     if(data.invalid_x)$('cs-status').textContent+=' · Missing / non-numeric X observations omitted: '+data.invalid_x;
     $('cs-source-sql').textContent=data.info.sql;inlineError('cs-error',null);
-  }finally{csBusy(false);}
+  })();
+  csLive.running=task;
+  try{await task;}finally{csLive.running=null;csBusy(false);}
+  if(retry)return csPreview();
 }
 async function csOpen(){
   if(!state.result?.result_id)throw new Error('Run a query to retain results before opening Chart studio.');
@@ -849,7 +943,7 @@ async function csLibrary(){
   const names=[...new Set(data.charts.map(c=>c.config.dashboard||'My dashboard'))];
   $('cs-dashboard-select').replaceChildren(node('option',{value:''},'All dashboards'),...names.map(n=>node('option',{value:n},n)));
   chartStudio.library=data;await csDashboard();if(!$('chart-dashboards').open)$('chart-dashboards').showModal();
-  chartStudio.cards.forEach(c=>c.resize());
+  csResizeAll();
 }
 async function csDashboard(){
   chartStudio.cards.forEach(c=>c.dispose());chartStudio.cards=[];$('cs-dashboard-grid').replaceChildren();
@@ -891,32 +985,52 @@ function setupCharts(){
     check('grid','Show grid lines'),check('tooltips','Show tooltips'),check('zoom','Enable chart zoom'),
     csField('Number format',csSelect('cs-numberStyle',[['number','Number'],['compact','Compact (1.2K)'],['percent','Percent (0.25 → 25%)']])),
     csField('Decimal places',number('decimals')),csField('Font size',number('fontSize'))),
+    section('Background',false,
+    csField('Canvas appearance',csSelect('cs-background',[['auto','Follow app theme'],['light','Light'],['dark','Dark'],['custom','Custom color']])),
+    csField('Base color',node('input',{id:'cs-backgroundColor',type:'color',value:'#ffffff'})),
+    csField('Background fill',csSelect('cs-backgroundFill',[['solid','Solid'],['gradient','Gradient'],['pattern','Pattern'],['image','Image / GIF']])),
+    csField('Second / pattern color',node('input',{id:'cs-backgroundSecond',type:'color',value:'#7765da'})),
+    csField('Gradient style',csSelect('cs-backgroundGradient',[['linear','Linear'],['radial','Radial']])),
+    csField('Gradient angle',number('backgroundAngle')),
+    csField('Pattern',csSelect('cs-backgroundPattern',[['diagonal','Diagonal stripes'],['horizontal','Horizontal stripes'],['vertical','Vertical stripes'],['dots','Dots'],['grid','Grid'],['checker','Checkerboard'],['crosshatch','Crosshatch']])),
+    csField('Pattern spacing / image tile size',number('backgroundSpacing')),csField('Pattern line / dot size',number('backgroundWeight')),csField('Pattern opacity',number('backgroundOpacity',.05)),
+    csField('Upload image / GIF',node('input',{id:'cs-background-upload',type:'file',accept:'image/png,image/jpeg,image/webp,image/gif',onchange:event=>csUploadBackground(event.target.files[0]).catch(error=>{$('cs-background-message').textContent=error.message;})})),
+    node('input',{id:'cs-backgroundImage',type:'hidden'}),node('input',{id:'cs-backgroundImageName',type:'hidden'}),node('small',{id:'cs-background-message',role:'status'},'Local images stay in this workspace when saved. Up to 512 KB, 25 megapixels.'),
+    csButton('Remove image',()=>{$('cs-backgroundImage').value='';$('cs-backgroundImageName').value='';$('cs-background-upload').value='';$('cs-background-message').textContent='Image removed.';csSchedule();}),
+    csField('Image sizing',csSelect('cs-backgroundImageFit',[['cover','Cover'],['contain','Fit inside'],['stretch','Stretch'],['tile','Tile']])),
+    csField('Image opacity',number('backgroundImageOpacity',.05)),csField('Base-color overlay',number('backgroundOverlay',.05)),
+    node('small',{},'GIFs animate in the live chart. PNG is a still image; SVG animation depends on the viewer. Light/dark export overrides use a solid background.')),
     section('Chart details',false,csField('Line width',number('lineWidth')),csField('Point size (0 hides line markers)',number('markerSize')),
     check('connectGaps','Connect missing values'),csField('Area opacity',number('areaOpacity',.05)),csField('Maximum bar width (%)',number('barWidth')),
     csField('Histogram bins (0 = automatic)',number('bins')),csField('Donut hole (%)',number('donutHole'))),
     section('Save & export',false,csField('Dashboard',node('input',{id:'cs-dashboard',maxlength:100,value:'My dashboard'})),
-    csField('PNG resolution multiplier',number('exportScale')),csButton('Save a copy',()=>csSave(true)),node('small',{},'PNG exports use the selected resolution. SVG stays sharp at any size. Exports use the last drawn preview.')),
+    csField('PNG resolution multiplier',number('exportScale')),csButton('Save a copy',()=>csSave(true)),node('small',{},'Choose current, light, dark or a custom background before export. SVG stays sharp at any size.')),
     section('Source data',false,node('p',{},'Frozen data from the original query run.'),node('pre',{id:'cs-source-sql'})));
-  controlsBox.addEventListener('input',()=>{chartStudio.dirty=true;$('cs-status').textContent='Settings changed · Update preview to apply.';});
+  controlsBox.addEventListener('input',event=>{if(event.target.id==='cs-background-upload')return;if(event.target.id==='cs-backgroundColor')$('cs-background').value='custom';csSchedule();});
   const settingsToggle=node('button',{id:'cs-toggle-settings',type:'button',class:'button secondary compact','aria-expanded':'true','aria-controls':'cs-controls',onclick:()=>{
     const hidden=$('chart-studio').classList.toggle('cs-settings-hidden');$('cs-toggle-settings').setAttribute('aria-expanded',String(!hidden));$('cs-toggle-settings').textContent=hidden?'Show settings':'Hide settings';
   }},'Hide settings');
   const studio=node('dialog',{id:'chart-studio',class:'modal cs-modal','aria-labelledby':'cs-heading'},
     node('div',{class:'cs-toolbar'},node('h2',{id:'cs-heading'},'Chart Studio'),
-    Object.assign(csButton('Update preview',csPreview,'button primary compact'),{id:'cs-update'}),Object.assign(csButton('Save chart',()=>csSave(false),'button primary compact'),{id:'cs-save'}),
-    csButton('Export PNG',()=>csExport(chartStudio.chart,'png',chartStudio.preview?.config.title,csDisplayConfig(chartStudio.preview?.config||{}).exportScale)),csButton('Export SVG',()=>csExport(chartStudio.chart,'svg',chartStudio.preview?.config.title)),
+    node('span',{id:'cs-live',class:'cs-live',role:'status'},'Live preview'),Object.assign(csButton('Save chart',()=>csSave(false),'button primary compact'),{id:'cs-save'}),
+    csButton('Export PNG',()=>csStudioExport('png')),csButton('Export SVG',()=>csStudioExport('svg')),
     csButton('Saved dashboards',csLibrary),settingsToggle,
     node('button',{id:'cs-detach',type:'button',class:'icon-button expand-button',title:'Open Chart Studio in a new tab','aria-label':'Open Chart Studio in a new tab',onclick:()=>{try{csDetach();}catch(error){report(error);}}},'↗'),
-    csButton('Close',csClose),csColor('cs-link')),
+    node('button',{id:'cs-close',type:'button',class:'icon-button cs-close',title:'Close Chart Studio','aria-label':'Close Chart Studio',onclick:csClose},'×'),csColor('cs-link')),
     node('div',{class:'cs-layout'},node('section',{class:'cs-preview','aria-label':'Chart preview'},node('div',{id:'cs-canvas'}),node('div',{class:'cs-preview-footer'},node('p',{id:'cs-status',role:'status','aria-live':'polite'}),node('div',{id:'cs-error',class:'modal-error hidden',role:'alert'}))),controlsBox));
   const dashboards=node('dialog',{id:'chart-dashboards',class:'modal cs-modal'},node('div',{class:'cs-toolbar'},node('h2',{},'Chart dashboards'),csSelect('cs-dashboard-select',[]),csButton('Print / PDF',()=>$('chart-dashboards').ownerDocument.defaultView.print()),csButton('Free unused sources',async()=>{if(!confirm('Remove chart sources that have no saved charts? Any unsaved studio source will also be removed.'))return;await csJob({op:'clean'});toast('Unused chart sources removed.');}),csButton('Close',()=>$('chart-dashboards').close())),node('p',{},'Saved charts use frozen data from their original query run. Edit a chart to change its dashboard name.'),node('div',{id:'cs-dashboard-grid'}));
-  document.body.append(studio,dashboards);$('cs-dashboard-select').addEventListener('change',()=>csDashboard().catch(report));
+  const exportDialog=node('dialog',{id:'cs-export-dialog',class:'modal cs-export-dialog','aria-labelledby':'cs-export-title'},
+    node('div',{class:'cs-toolbar'},node('h2',{id:'cs-export-title'},'Export chart'),node('button',{type:'button',class:'icon-button cs-close','aria-label':'Close export',onclick:()=>$('cs-export-dialog').close()},'×')),
+    node('p',{id:'cs-export-note'}),csField('Export appearance',csSelect('cs-export-appearance',[['current','Current chart background'],['light','Light background'],['dark','Dark background'],['custom','Custom solid color']])),
+    csField('Background color',node('input',{id:'cs-export-color',type:'color',value:'#ffffff'})),
+    node('div',{class:'cs-actions'},csButton('Cancel',()=>$('cs-export-dialog').close()),node('button',{id:'cs-export-confirm',type:'button',class:'button primary',onclick:()=>$('cs-export-dialog').close('export')},'Export')));
+  document.body.append(studio,dashboards,exportDialog);$('cs-export-appearance').addEventListener('change',()=>{$('cs-export-color').disabled=$('cs-export-appearance').value!=='custom';});$('cs-dashboard-select').addEventListener('change',()=>csDashboard().catch(report));
   const ownerLink=csColor('cs-owner-link');ownerLink.classList.add('hidden');
   const ownerReturn=csButton('↙ Chart Studio',()=>csRestore());ownerReturn.id='cs-owner-return';ownerReturn.classList.add('hidden');document.querySelector('.topbar').append(ownerReturn,ownerLink);
   studio.addEventListener('cancel',event=>{if(csPortal.child){event.preventDefault();csClose();}});
   window.addEventListener('pagehide',()=>csRestore(true,false));
-  const resize=()=>{if(quickChart&&!quickChart.isDisposed())quickChart.resize();if(chartStudio.chart&&!chartStudio.chart.isDisposed())chartStudio.chart.resize();chartStudio.cards.forEach(c=>!c.isDisposed()&&c.resize());};
-  new ResizeObserver(resize).observe($('chart-content'));new ResizeObserver(resize).observe($('cs-canvas'));
-  window.addEventListener('resize',resize);quickPrepare();
+  new ResizeObserver(csResizeAll).observe($('chart-content'));new ResizeObserver(csResizeAll).observe($('cs-canvas'));
+  new MutationObserver(()=>{csUpdateLink();for(const chart of [quickChart,chartStudio.chart,...chartStudio.cards]){if(!chart||chart.isDisposed())continue;const meta=csRendered.get(chart);if(meta){chart.setOption(chartOption(meta.data,meta.config),{notMerge:true});csApplyBackground(chart.getDom(),meta.config);}}}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  window.addEventListener('resize',csResizeAll);quickPrepare();
 }
 document.addEventListener('DOMContentLoaded',setupCharts);
