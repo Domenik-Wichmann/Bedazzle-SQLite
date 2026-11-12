@@ -68,6 +68,14 @@ def main():
                     return 0
         except (OSError, ValueError, KeyError):
             pass
+    from companion_ownership import acquire
+    if not acquire(workspace):
+        import time
+        for _ in range(50):
+            time.sleep(.1)
+            if session_file.exists():
+                return main()
+        raise SystemExit('Another Bedazzle service owns this workspace. Retry after it finishes starting.')
     from app_server import Server
     server = Server(('127.0.0.1', args.port), workspace)
     server.startup = startup

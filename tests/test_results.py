@@ -34,3 +34,16 @@ class RetainedResults(unittest.TestCase):
   release(self.root,result['result_id'])
   with self.assertRaisesRegex(ValueError,'no longer available'):self.run_action('export_result',{'result_id':result['result_id'],'format':'csv','output':str(self.root/'gone.csv')})
   with self.assertRaises(ValueError):release(self.root,'../../outside')
+
+ def test_inspector_reads_full_retained_row_and_all_columns(self):
+  columns=','.join(f'{i} AS col_{i}' for i in range(125))
+  result=self.run_action('query',{'sql':f"SELECT i,repeat('x',9000) AS text,from_hex(repeat('ab',3000)) AS binary,{columns} FROM range(3) t(i) ORDER BY i DESC",'retain_result':True})
+  self.assertEqual(len(result['columns']),120)
+  full=self.run_action('inspect_result',{'result_id':result['result_id'],'row_index':1})
+  self.assertEqual(len(full['columns']),128)
+  self.assertEqual(full['row'][0],1)
+  self.assertEqual(full['row'][1],'x'*9000)
+  self.assertEqual(full['row'][2],'0x'+'ab'*3000)
+  self.assertEqual(full['row'][-1],124)
+  for index in (-1,3):
+   with self.assertRaises(ValueError):self.run_action('inspect_result',{'result_id':result['result_id'],'row_index':index})

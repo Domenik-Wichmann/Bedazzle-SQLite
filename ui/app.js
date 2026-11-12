@@ -1,4 +1,5 @@
 'use strict';
+window.bedazzleRequestedArtifact=new URLSearchParams(location.search).get('companion_show');
 const $ = id => document.getElementById(id) || window.bedazzleResultsWindow?.getElementById(id) || window.bedazzleChartWindow?.getElementById(id);
 const token = location.hash.slice(1) || sessionStorage.getItem('fieldwork-token') || '';
 if (token) sessionStorage.setItem('fieldwork-token', token);
@@ -8,7 +9,7 @@ const state = {data: null, selected: null, result: null, profile: null, view: 't
   library: 'saved', sort: null, sqlBeforeBuilder: '', activeSQL: '', groupBase: '', tabs: [], activeTab: null};
 const labels = {catalog: 'Opening your workspace', preview: 'Previewing your file', open: 'Opening your dataset',
   convert: 'Converting to Parquet', query: 'Running your query', export: 'Exporting full results',export_result:'Saving current results',
-  count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset'};
+  count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset', inspect_result:'Loading complete row'};
 let draftTimer=null;
 
 function node(tag, attrs = {}, ...children) {
@@ -178,6 +179,7 @@ function renderTabs(){
 }
 function switchTab(id){
   if(state.busy)return toast('Wait for the current operation or cancel it before switching tabs.');
+  closeRowInspector();
   cacheTab();
   const tab=state.tabs.find(item=>item.id===id);if(!tab)return;
   state.activeTab=id;state.result=tab.result||null;state.groups=tab.groups||[];state.groupDataset=tab.groupDataset||null;
@@ -357,22 +359,33 @@ function tableFor(result, {interactive=false, mini=false} = {}) {
     row.forEach((value, columnIndex) => {
       const col = result.columns[columnIndex];
       const td = node('td', {title:value === null ? 'NULL' : String(value)});
+      td.addEventListener('mouseenter',()=>{
+        const inspector=$('row-inspector');
+        if(inspector?._origin===tr)setRowInspectorHover(inspector,columnIndex);
+      });
+      td.addEventListener('mouseleave',()=>{
+        const inspector=$('row-inspector');
+        if(inspector?._origin===tr)setRowInspectorHover(inspector);
+      });
       if (/INT|DECIMAL|DOUBLE|FLOAT|HUGE|REAL/.test(col.type)) td.classList.add('numeric');
       if (interactive && columnIndex === 0 && state.groups.length && state.groupDataset) {
         td.append(node('button', {class:'drill-button',onclick:() => toggleGroup(tr,index,row).catch(report)},
           node('span', {}, '▸'), value === null ? 'NULL' : String(value)));
       } else if (value === null) td.append(node('span', {class:'null-value'}, 'NULL'));
       else td.textContent = String(value);
-      td.addEventListener('dblclick', () => { navigator.clipboard.writeText(value === null ? '' : String(value)).then(() => toast('Cell copied.')).catch(report); });
       tr.append(td);
     });
-    if (interactive) tr.addEventListener('dblclick', event => { if (event.target.classList.contains('row-number')) showRow(row); });
+    tr.addEventListener('dblclick', event => {
+      if (event.target.closest('.drill-button')) return;
+      showRow(row,result,index,tr).catch(report);
+    });
     body.append(tr);
   });
   table.append(body);
   return table;
 }
 function renderResults() {
+  closeRowInspector();
   const result = state.result;
   if (!result) return;
   show('result-message',false);
@@ -381,8 +394,8 @@ function renderResults() {
   renderVirtualRows();
   renderResultSummary();
   const notes = [];
-  if (result.total_columns > result.columns.length) notes.push(`Showing ${result.columns.length} of ${result.total_columns} columns. Select fewer columns in SQL to see the others.`);
-  if (result.clipped_cells) notes.push('Long values are shortened in the preview. Full exports preserve them.');
+  if (result.total_columns > result.columns.length) notes.push(`Showing ${result.columns.length} of ${result.total_columns} columns.${result.retained?' Double-click a row to inspect every column.':' Select fewer columns in SQL to see the others.'}`);
+  if (result.clipped_cells) notes.push('Long values are shortened in the preview. '+(result.retained?'Double-click a row to read complete values.':'Full exports preserve them.'));
   if (result.statement_count > 1&&!result.retained) notes.push('This script ran multiple statements. To page or export its final SELECT, run that SELECT separately.');
   if (result.has_more && !/\border\s+by\b/i.test(result.sql)) notes.push('Add ORDER BY if you need a consistent row order across pages.');
   $('result-notice').textContent = notes.join(' '); show('result-notice',!!notes.length);
@@ -421,10 +434,58 @@ async function sortColumn(column) {
   await runSQL(base,0,true,{result_id:state.result.result_id,sort:{column,direction}});
   setEditor(state.result.sql);
 }
-function showRow(row) {
-  $('detail-title').textContent = 'Record details'; $('detail-eyebrow').textContent = 'THIS RESULT PAGE';
-  $('detail-content').replaceChildren(...row.map((cell,index) => node('div',{class:'detail-row'},node('strong',{},state.result.columns[index].name),node('span',{},cell === null ? 'NULL' : String(cell)))));
-  $('detail-dialog').showModal();
+let rowInspectorVersion=0;
+function setRowInspectorHover(inspector,columnIndex) {
+  inspector._hovered?.forEach(element=>element?.classList.remove('row-inspector-hover'));
+  const field=inspector.querySelectorAll('.row-inspector-field')[columnIndex];
+  const cell=columnIndex===undefined?null:inspector._origin?.cells[columnIndex+1];
+  inspector._hovered=[field,cell];
+  inspector._hovered.forEach(element=>element?.classList.add('row-inspector-hover'));
+}
+function closeRowInspector() {
+  rowInspectorVersion++;
+  const inspector=$('row-inspector');
+  if (!inspector) return;
+  setRowInspectorHover(inspector);
+  const origin=inspector._origin;
+  inspector.remove();
+  if(origin?.isConnected) origin.focus({preventScroll:true});
+}
+async function showRow(row,result,index,origin) {
+  closeRowInspector();
+  const version=rowInspectorVersion;
+  const doc=origin.ownerDocument;
+  document.body.classList.add('sidebar-collapsed');
+  localStorage.setItem('bedazzle-sidebar','true');
+  $('toggle-sidebar').setAttribute('aria-label','Expand sidebar');
+  const content=node('div',{class:'row-inspector-values','aria-live':'polite'});
+  const close=node('button',{class:'close-button',type:'button','aria-label':'Close row inspector',onclick:closeRowInspector},'×');
+  const inspector=node('aside',{id:'row-inspector',role:'dialog','aria-labelledby':'row-inspector-title'},
+    node('header',{},node('div',{},node('small',{},`ROW ${(result.offset+index+1).toLocaleString()}`),node('h2',{id:'row-inspector-title'},'Inspect row')),close),content);
+  inspector._origin=origin;
+  origin.tabIndex=-1;
+  inspector.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();closeRowInspector();}});
+  doc.body.append(inspector);close.focus({preventScroll:true});
+  const render=(columns,values)=>{
+    content.replaceChildren(...columns.map((column,i)=>node('section',{class:'row-inspector-field',
+      onmouseenter:()=>setRowInspectorHover(inspector,i),onmouseleave:()=>setRowInspectorHover(inspector)},
+    node('div',{class:'row-inspector-label'},node('strong',{},column.name),node('small',{},column.type)),
+    node('pre',{class:values[i]===null?'null-value':''},values[i]===null?'NULL':String(values[i])))));
+    const hovered=[...origin.cells].findIndex(cell=>cell.matches(':hover'))-1;
+    if(hovered>=0)setRowInspectorHover(inspector,hovered);
+  };
+  if (!result.result_id) {
+    render(result.columns,row);
+    if(result.clipped_cells||result.total_columns>result.columns.length)content.prepend(node('p',{class:'notice'},'Only preview values are available for this result. Run a SELECT separately to inspect complete rows.'));
+    return;
+  }
+  content.textContent='Loading complete row…';
+  try {
+    const full=await runJob('inspect_result',{result_id:result.result_id,row_index:result.offset+index});
+    if(version===rowInspectorVersion&&inspector.isConnected)render(full.columns,full.row);
+  } catch(error) {
+    if(version===rowInspectorVersion&&inspector.isConnected)content.replaceChildren(node('p',{class:'notice'},error.message));
+  }
 }
 async function toggleGroup(tr,index,row) {
   const key = String(index);

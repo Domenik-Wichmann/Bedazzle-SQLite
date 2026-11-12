@@ -296,7 +296,7 @@ def patch_target(conn, session, table, keys, mapped, all_columns):
                      f' FROM {work} w WHERE {new}')
 
 
-def write_source(conn, session, payload):
+def write_source(conn, session, payload, target_reference=None):
     target, keys, mapped = mapping(conn, session, payload)
     mode = payload['mode']
     is_file = bool(target.get('path'))
@@ -310,6 +310,10 @@ def write_source(conn, session, payload):
             raise ValueError('This destination is a view. Choose its underlying table or save a working copy.')
     else:
         original = Path(target['path'])
+        expected_hash=payload.get('expected_content_sha256')
+        if expected_hash:
+            from companion_store import digest
+            if digest(original)!=expected_hash:raise ValueError('Original content changed; overwrite approval is stale.')
         old_stamp = session['stamps'].get(target['name'])
         if not old_stamp or old_stamp['path'] != str(original) or old_stamp['stamp'] != stamp(original):
             raise ValueError('The original file changed or was opened after this draft. Open a fresh editor before saving back.')
@@ -318,7 +322,7 @@ def write_source(conn, session, payload):
     staging = q('_wb_edit_staging_' + token)
     work, base, history = names(session)
     rid = identity(session)
-    destination = staging if is_file else q(target['name'])
+    destination = staging if is_file else (target_reference or q(target['name']))
     partial = backup = None
     replaced = committed = False
     replacement_stamp = None
@@ -347,6 +351,8 @@ def write_source(conn, session, payload):
                 raise ValueError('This file format cannot round-trip these edited values with its reader settings. Save a Parquet export instead. The original is unchanged.')
             if stamp(original) != old_stamp['stamp']:
                 raise ValueError('The source file changed while saving. No replacement was made.')
+            if expected_hash and digest(original)!=expected_hash:
+                raise ValueError('Original content changed while staging the overwrite. No replacement was made.')
             backup = original.with_name(original.name + '.' + token + '.bak')
             # Exclusive backup publication; never overwrite a previous backup.
             with original.open('rb') as source, backup.open('xb') as output:
@@ -355,6 +361,9 @@ def write_source(conn, session, payload):
                 os.fsync(output.fileno())
             if stamp(original) != old_stamp['stamp']:
                 raise ValueError('The source file changed during backup. No replacement was made.')
+            if expected_hash and (digest(backup)!=expected_hash or digest(original)!=expected_hash):
+                raise ValueError('Original content changed during backup. No replacement was made.')
+            written_hash=digest(partial) if expected_hash else None
             with partial.open('rb+') as written:
                 os.fsync(written.fileno())
             os.replace(partial, original)
@@ -367,6 +376,7 @@ def write_source(conn, session, payload):
             session['stamps'][target['name']] = {'path': str(original), 'stamp': stamp(original)}
             conn.execute('UPDATE _wb_sources SET bytes=? WHERE name=?', [original.stat().st_size, target['name']])
             result.update(path=str(original), backup=str(backup))
+            if written_hash:result['content_sha256']=written_hash
         conn.execute(f'DELETE FROM {base}')
         conn.execute(f'INSERT INTO {base} SELECT * FROM {work}')
         conn.execute(f'DELETE FROM {history}')

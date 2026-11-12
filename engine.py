@@ -107,6 +107,23 @@ def describe(conn, sql):
             for row in conn.execute(f'DESCRIBE {sql}').fetchall()]
 
 
+def parquet_query(conn,sql):
+    """Avoid DuckDB's implicit lossy HUGEINT -> DOUBLE Parquet conversion."""
+    columns=describe(conn,'SELECT * FROM ('+query_body(sql)+') parquet_types')
+    fields=[];converted=[]
+    for col in columns:
+        name,kind=col['name'],col['type']
+        expression='parquet_source.'+identifier(name)
+        if kind in ('HUGEINT','UHUGEINT'):
+            expression='CAST('+expression+' AS DECIMAL(38,0))'
+            converted.append(name)
+        elif 'HUGEINT' in kind:
+            raise ValueError('Nested 128-bit integers cannot be retained losslessly in Parquet. Project an explicit VARCHAR representation instead.')
+        fields.append(expression+' AS '+identifier(name))
+    if not converted:return sql,[]
+    return 'SELECT '+','.join(fields)+' FROM ('+query_body(sql)+') parquet_source',converted
+
+
 def catalog(conn):
     known = {r[0]: r[1:] for r in conn.execute('SELECT * FROM _wb_sources').fetchall()}
     aliases = {r[0] for r in conn.execute('SELECT name FROM _wb_aliases').fetchall()}
@@ -326,15 +343,20 @@ def copy_to(conn, sql, target, options, job_id):
     partial = target.parent / f'.{target.name}.{job_id}.partial'
     try:
         conn.execute('SET preserve_insertion_order = false')
+        converted=[]
+        if 'FORMAT PARQUET' in options.upper():sql,converted=parquet_query(conn,sql)
         count = conn.execute(f'COPY ({sql}) TO {literal(partial.as_posix())} ({options})').fetchone()
         publish_file(partial, target)
         return {'path': str(target), 'bytes': target.stat().st_size,
-                'exported_rows': count[0] if count else None}
+                'exported_rows': count[0] if count else None,**({'storage_notes':{'exact_integer_columns':converted,'representation':'DECIMAL(38,0)'}} if converted else {})}
     finally:
         partial.unlink(missing_ok=True)
 
 
 def perform(conn, action, payload, job_id, on_preview=None, module_context=None):
+    if action == 'companion':
+        from companion_backend import dispatch
+        return dispatch(conn, payload, job_id, module_context or {})
     if action == 'chart_studio':
         from chart_studio import dispatch
         return dispatch(conn, payload, module_context or {})
@@ -383,6 +405,9 @@ def perform(conn, action, payload, job_id, on_preview=None, module_context=None)
         result['name'] = attach_source(conn, target, name=payload.get('name'))
         result['catalog'] = catalog(conn)
         return result
+    if action == 'inspect_result':
+        from result_store import inspect_row
+        return inspect_row(conn,payload,(module_context or {})['workspace'])
     if action == 'query':
         if payload.get('retain_result') or payload.get('result_id'):
             from result_store import query
@@ -434,6 +459,15 @@ def perform(conn, action, payload, job_id, on_preview=None, module_context=None)
         if not alias and old.casefold() != new.casefold():
             available_name(conn, new, exact=True)
         is_view = conn.execute("SELECT count(*) FROM duckdb_views() WHERE view_name=? AND database_name=current_database() AND schema_name='main'", [old]).fetchone()[0]
+        # Preserve companion restrictions across UI-initiated stored-table renames.
+        # Record both names before the rename; a failed rename remains conservative.
+        workspace=(module_context or {}).get('workspace')
+        if workspace and (Path(workspace)/'companion'/'ledger.sqlite3').exists():
+            from companion_store import Ledger
+            ledger=Ledger(workspace)
+            try:binding=ledger.get('binding',old)
+            except ValueError:binding=None
+            if binding:ledger.put('binding',{**binding,'table':new},new)
         conn.execute('BEGIN')
         try:
             if alias:

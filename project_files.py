@@ -1,5 +1,8 @@
 """Explicit source allowlist: no user files, history, tokens or runtime binaries."""
 FILES=[
+    'companion_store.py','companion_backend.py','companion_mcp.py','companion_local.py','companion_ownership.py','companion_bridge.js',
+    'companion_sql.py','companion_features.py','companion_ingest.py','companion_control.py','companion_control.ps1','companion_window.py','Start Bedazzle approvals.cmd','tests/test_companion_control.py',
+    'COMPANION.md','COMPANION_VERIFICATION.md','skills/bedazzle/SKILL.md','tools/package_companion.py','tests/test_companion.py','tests/test_companion_bridge.py','tests/test_companion_recovery.py','tests/companion_browser.cjs','tests/companion_package.py','ui/companion.js',
     'ui/query_builder.js','ui/query_builder_query.js','ui/query_builder.css',
     'tests/query_builder_browser.cjs','tests/query_builder_calculations.cjs','tests/query_builder_calculations_browser.cjs',
     'tests/query_builder_http.py','tests/query_builder_loading.cjs','tests/query_builder_query.cjs','tests/detached_results_browser.cjs',
@@ -17,7 +20,7 @@ FILES=[
     'result_store.py','tests/test_results.py','tests/export_results_browser.cjs',
     'data_editor.py','ui/data_editor.js','ui/data_editor.css','tests/test_data_editor.py','tests/data_editor_browser.cjs','tests/data_editor_http.py',
     '.gitignore','LICENSE','README.md','AGENT_INSTRUCTIONS.md','THIRD_PARTY_NOTICES.md',
-    'VERIFICATION.md','requirements.txt','Start Bedazzle.cmd','bootstrap.py','workbench.py',
+    'VERIFICATION.md','RELEASE_NOTES.md','requirements.txt','Start Bedazzle.cmd','bootstrap.py','workbench.py',
     'launcher.py','engine.py','app_server.py','file_dialog.py','package.py','project_files.py','workspaces.py','repository.py','module_runtime.py','MODULES.md','example_workspace.py',
     'ui/index.html','ui/app.js','ui/style.css','ui/workspace.css','ui/bedazzle.js','ui/bedazzle.css','ui/favicon.svg','ui/workbench.js','ui/workbench.css','ui/modules.js','ui/modules.css',
     'modules/image_checker/manifest.json','modules/image_checker/runner.py','modules/image_checker/network.py','modules/image_checker/quality.py','modules/image_checker/similarity.py',

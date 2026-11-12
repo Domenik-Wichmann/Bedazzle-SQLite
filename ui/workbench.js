@@ -17,6 +17,7 @@ function setupDetachedResults(){
   document.querySelector('.topbar').append(status,returnButton);
   function restore(close=true){
     if(!child||restoring)return;
+    closeRowInspector();
     restoring=true;clearInterval(timer);
     const previous=child;child=null;
     // Adopt back even when the browser has already closed the child window.
@@ -73,6 +74,7 @@ function setupDetachedResults(){
     // Called synchronously inside the user gesture so popup blockers can allow it.
     const opened=window.open('about:blank','bedazzle-results-'+instance);
     if(!opened){toast('Allow pop-ups for Bedazzle to open results in a new tab.',true);return;}
+    closeRowInspector();
     child=opened;oldFocus=focusView;
     try{
       const doc=child.document;

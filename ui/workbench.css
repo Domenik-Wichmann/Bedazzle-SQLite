@@ -51,6 +51,22 @@ main{margin:0!important;padding:10px 18px 6px;width:0;flex:1;min-width:0;height:
 @media(max-width:1050px){.sidebar{width:204px;flex-basis:204px;padding:16px 12px}.sidebar-collapsed .sidebar{margin-left:-204px}.brand small{font-size:8px}.editor-tools,.result-actions{gap:5px}.panel-toolbar{padding:7px 9px}.button.compact{padding:7px 9px}.header-home{max-width:100px}.results-footer{flex-wrap:wrap;row-gap:4px}.results-footer>div:first-child{font-size:9px}}
 @media(max-width:760px){main{padding:8px}.sidebar{position:absolute;left:0;top:0;z-index:20;box-shadow:8px 0 30px #1b2c2522}.sidebar-collapsed .sidebar{margin-left:-204px}.topbar{gap:7px}.header-home,.header-separator,#workspace-subtitle{display:none}.editor-tools{gap:3px}.editor-tools .text-button{font-size:10px;padding:4px}.editor-tools kbd{display:none}.segmented button{padding:6px;font-size:10px}.result-tabs button{font-size:10px;padding:6px}.result-actions .text-button{display:none}.main-footer{display:none}.panel-toolbar{flex-wrap:wrap}.pagination{gap:5px}.pagination label{font-size:9px}.editor-footer{font-size:9px}#work-area{grid-template-rows:minmax(155px,.42fr) 10px minmax(155px,.58fr)}}
 @media(prefers-reduced-motion:reduce){.sidebar{transition:none}}
+
+#row-inspector{position:fixed;inset:0 0 0 auto;width:25vw;height:100dvh;box-sizing:border-box;z-index:90;display:flex;flex-direction:column;background:var(--surface,#fff);color:var(--ink,#314337);border-left:1px solid var(--border,#dce5d3);box-shadow:-12px 0 36px #0002;animation:row-inspector-in .2s ease-out}
+#row-inspector>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:24px 20px 18px;border-bottom:1px solid var(--border,#dce5d3);flex-shrink:0}
+#row-inspector h2{font-size:20px;margin:6px 0 0}
+#row-inspector header small{font-size:10px;letter-spacing:1px;opacity:.65}
+#row-inspector .close-button{position:static;flex-shrink:0}
+.row-inspector-values{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 20px 24px}
+.row-inspector-field{padding:20px 0;border-bottom:1px solid var(--border,#dce5d3)}
+.row-inspector-label{display:flex;flex-direction:column;gap:5px;overflow-wrap:anywhere}
+.row-inspector-label strong{font-size:12px;font-weight:600}
+.row-inspector-label small{font:10px Consolas,monospace;opacity:.6}
+.row-inspector-field pre{margin:12px 0 0;font:12px/1.7 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+#result-table>tbody>tr:not(.virtual-spacer):hover>td:not(.row-number):hover{background:color-mix(in srgb,var(--surface,#fff),#76a350 20%);box-shadow:inset 0 0 0 1px #76a35066}
+.row-inspector-field.row-inspector-hover,table>tbody>tr>td.row-inspector-hover{background:color-mix(in srgb,var(--surface,#fff),#76a350 20%);box-shadow:inset 0 0 0 1px #76a35066}
+@keyframes row-inspector-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){#row-inspector{animation:none}}
 :root {
   color-scheme: light;
   --surface: #ffffff;
@@ -185,6 +201,29 @@ html[data-theme=dark] :is(.resource-line,.nav-count) {border-color:var(--border)
 body.pivot-active .beautify-control {display:none}
 @media(max-width:800px) {#beautify-query {display:inline-flex!important;font-size:10px}.editor-tools {flex-wrap:wrap}.panel-toolbar {flex-wrap:wrap}}
 @media(forced-colors:active) {.sql-pane.sql-highlight-ready #sql-editor {color:CanvasText;-webkit-text-fill-color:CanvasText}.sql-pane #sql-highlight {visibility:hidden}}
+
+/* Claude follow and activity controls sit immediately before the theme button. */
+.companion-toolbar {display:flex;align-items:center;gap:6px;margin-left:auto;flex:0 0 auto}
+.topbar #theme-toggle {margin-left:0}
+.companion-toolbar button,.companion-minimize {display:grid;place-items:center;width:32px;height:32px;padding:6px;border:1px solid var(--border);border-radius:50%;color:var(--sql-text);background:var(--surface);flex:0 0 auto}
+.companion-toolbar svg,.companion-minimize svg {width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.companion-toolbar button:hover,.companion-minimize:hover {background:color-mix(in srgb,currentColor 8%,var(--surface))}
+#follow-claude-toggle[aria-pressed=true] {color:#367746;background:#e9f3e7;border-color:#9fbc98}
+html[data-theme=dark] #follow-claude-toggle[aria-pressed=true] {color:#b9d9ac;background:#26392c;border-color:#6c8c67}
+#follow-claude-toggle[aria-pressed=true] svg {stroke-width:3.5}
+.companion-panel {position:fixed;bottom:12px;right:12px;z-index:35;width:min(420px,calc(100vw - 24px));max-height:min(50vh,calc(100vh - 24px));display:flex;flex-direction:column;background:var(--surface,#fff);color:var(--sql-text,#314337);border:1px solid var(--border,#888);border-radius:10px;box-shadow:0 8px 30px #0002;overflow:hidden;font-size:12px}
+.companion-panel[hidden] {display:none}
+.companion-panel-header {display:flex;align-items:center;gap:8px;padding:7px 8px 7px 12px;border-bottom:1px solid var(--border);flex:0 0 auto}
+.companion-drag-handle {flex:1;min-width:0;cursor:grab;touch-action:none;user-select:none;font-weight:600;padding:4px 0}
+.companion-panel-header.dragging .companion-drag-handle {cursor:grabbing}
+.companion-drag-handle:focus-visible {outline:2px solid currentColor;outline-offset:3px;border-radius:3px}
+.companion-follow-status {font-size:10px;opacity:.75}
+.companion-minimize {border-radius:6px;width:28px;height:28px}
+.companion-panel-content {overflow:auto;overscroll-behavior:contain;padding:10px;min-height:0}
+.companion-panel summary {cursor:pointer}
+.companion-panel-actions {display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.companion-panel-actions button,.companion-panel details button {padding:5px 7px;border:1px solid var(--border);border-radius:5px;font-size:11px;text-align:left}
+.companion-panel-content [role=status] {font-size:11px;overflow-wrap:anywhere}
 .query-builder-pane{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--surface,#fff);overflow:auto;font-size:12px}
 .qb-toolbar,.qb-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}.qb-toolbar label,.qb-options label{display:flex;align-items:center;gap:5px;margin:0}.query-builder-pane select,.query-builder-pane input{background:var(--surface,#fff);color:inherit;border:1px solid var(--border,#ccd6c5);border-radius:5px;padding:4px 6px;min-width:0;max-width:100%;font-size:12px}.qb-toolbar>select{max-width:240px}.qb-options>input{width:160px}.qb-button{border:1px solid var(--border,#ccd6c5);border-radius:5px;padding:4px 8px;background:var(--surface,#fff);color:inherit;white-space:nowrap}.qb-button:hover{background:#7c9e7120}
 .qb-workspace{display:grid;grid-template-columns:minmax(260px,1fr) 330px;gap:10px;min-height:200px;flex:1}.qb-canvas-section{display:flex;flex-direction:column;min-width:0;min-height:0}.qb-canvas{flex:1;overflow:auto;min-height:180px;border:1px solid var(--border,#ccd6c5);border-radius:8px;background-image:radial-gradient(#8a9c7445 1px,transparent 1px);background-size:18px 18px}#qb-world{position:relative;min-width:100%;min-height:100%}#qb-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}#qb-lines path{stroke:#799d5f;stroke-width:2.5;fill:none}.qb-table{position:absolute;width:254px;background:var(--surface,#fff);border:1px solid var(--border,#ccd6c5);border-radius:8px;box-shadow:0 3px 12px #00000010;overflow:hidden}.qb-table header{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#839e6e18;cursor:grab;touch-action:none}.qb-table header strong{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qb-table header small{opacity:.65}.qb-table header .qb-button{padding:0 6px}.qb-fields{max-height:255px;overflow:auto}.qb-field{display:flex;align-items:center;gap:5px;min-height:31px;border-top:1px solid var(--border,#ccd6c5);padding:3px 6px;cursor:grab}.qb-field-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qb-field small{max-width:65px;font-size:9px;overflow:hidden;text-overflow:ellipsis;opacity:.65}.qb-field .qb-button{padding:0 5px}.qb-field.qb-selected{background:#79a35618}.qb-field.qb-pending{outline:2px solid #799d5f;outline-offset:-2px}.qb-over{outline:2px dashed #799d5f;outline-offset:-3px;background:#79a35615!important}

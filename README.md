@@ -10,6 +10,35 @@ My local tools for poking around big CSVs with SQL. Uses native DuckDB, with a s
 
 The browser opens automatically. Keep the terminal open while using the app. Use **Quit** in the sidebar or Ctrl+C in the terminal to stop it.
 
+## Use Bedazzle from Claude Desktop
+
+The optional local integration lets Claude inspect permitted datasets through
+Bedazzle while its main window stays closed. It uses your existing Claude account;
+Bedazzle does not make inference API calls or request account credentials.
+
+Download the [Claude Desktop extension](https://github.com/Domenik-Wichmann/Bedazzle-SQLite/releases/latest/download/Bedazzle-Claude-Desktop.mcpb)
+and [Bedazzle skill](https://github.com/Domenik-Wichmann/Bedazzle-SQLite/releases/latest/download/Bedazzle-Skill.zip)
+alongside the Windows app. Install the extension in Claude Desktop, pointing it at
+the extracted app folder and its workspace home. Upload and enable the skill
+separately. Start **Start Bedazzle approvals.cmd** to choose the folders and task
+Claude may inspect. Existing development installs in `C:\dev\DuckDB` are already
+updated; keep the same app/workspace settings and restart an idle background engine
+through the approvals window after Python updates. See [setup and recovery](COMPANION.md).
+
+Original inspection is read-only. Data repairs need a specific local approval;
+analyzing the resulting edited version needs a second approval after its creation.
+Queries, profiles, image checks, charts and bounded previews run locally. Original
+snapshots/findings and edited versions stay distinct. Default model transfers are
+200 rows / 64 KiB per response and 1 MiB per authorized task; full results stay local.
+
+The **play/pause** button immediately left of night mode controls **Follow Claude**.
+Pause stops automatic navigation while jobs continue. The adjacent activity icon
+shows/hides the activity panel, which starts minimized. Drag the panel by its header
+inside the app window, or use its minus button/Escape to hide it completely. Position,
+visibility and follow settings are remembered; incoming activity never forces the
+panel open. [Companion verification and boundaries](COMPANION_VERIFICATION.md) distinguish
+tested tool behavior from Claude's autonomous analytical judgment.
+
 ## Working on the project
 
 A Git clone keeps your edits connected to GitHub:
@@ -50,6 +79,7 @@ First launch includes an **Example workspace**: [products.csv](examples/products
 - **Charts, column profiles and query plans:** use Chart, Data profile, Count dataset, and Explain when you need them. Explain shows a structured operation tree with planner estimates and details, an optional raw JSON view, and its own expand button. It does not run the query.
 - **Export full results:** CSV, TSV, Parquet, JSON or NDJSON. Streams every matching result row to disk, not just the visible page. A LIMIT in the SQL still applies.
 - **Send to module → Image URL Checker:** beside Export, send the complete SELECT to a reusable module. Choose multiple URL columns, optional expected width/height/bytes/MIME columns, and limits. It checks HTTP/TLS/redirects, downloads and actually verifies/decodes supported images, reports dimensions/animation/metadata/type mismatches and image statistics, deduplicates repeated URLs, and saves progress for Resume. Open/export the full report, or **Merge back to results** to create an enriched dataset with every original row preserved. Original files are kept intact. Private-network URLs are off by default; unsupported/incomplete checks are explicit. See [module details and how to add your own](MODULES.md).
+- **Inspect row:** double-click a result cell or row number to open a full-height inspector on the right, using 25% of that window's width. The main sidebar collapses automatically. Scroll through all columns and complete retained values, including text shortened in the grid. Detached results open the inspector in their own tab. X or Escape removes it completely; double-click another row to reopen it. Hovering a cell adds a highlight within the highlighted row.
 - **Tips off/on:** the optional little information badges explain controls. Off by default. Reduced-motion preferences disable moving glitter/shimmer.
 - **Agent instructions:** opens a card with **Copy instructions** and **Download file**. Both give the complete guide with SQL examples, feature explanations, and current dataset/column names. No row values or full source paths are included. Paste it into an LLM when asking for help.
 

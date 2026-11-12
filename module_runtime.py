@@ -109,7 +109,15 @@ class Context:
         self.record.update(values,updated=time.time())
         temporary=self.directory/'run.tmp'
         temporary.write_text(json.dumps(self.record,ensure_ascii=False),encoding='utf-8')
-        temporary.replace(self.directory/'run.json')
+        # Windows scanners/readers can briefly deny replacement. Never delete the
+        # last durable receipt; retry the atomic replace for a bounded interval.
+        for attempt in range(10):
+            try:
+                temporary.replace(self.directory/'run.json')
+                break
+            except PermissionError:
+                if attempt == 9:raise
+                time.sleep(.025 * (attempt + 1))
 
     def activity(self,label,detail='',**values):
         self.check_cancelled()
@@ -117,11 +125,18 @@ class Context:
 
     def write_report(self,sql,row_group_size=None):
         path=self.directory/'report.parquet';temporary=self.directory/'report.partial'
+        lineage=self.record.get('companion_lineage',{})
+        if lineage.get('edited'):
+            from companion_store import Ledger
+            Ledger(self.workspace).note_file(path,lineage.get('query_id') or lineage['inputs'][0])
         temporary.unlink(missing_ok=True)
         if row_group_size is not None and row_group_size not in (16384,32768,65536,122880):raise ValueError('Unsupported report row-group size.')
         grouping=f', ROW_GROUP_SIZE {row_group_size}' if row_group_size else ''
+        from engine import parquet_query
+        sql,_=parquet_query(self.conn,sql)
         self.conn.execute(f'COPY ({sql}) TO {literal(temporary)} (FORMAT PARQUET, COMPRESSION ZSTD{grouping})')
         self.check_cancelled();temporary.replace(path)
+        if lineage.get('edited'):Ledger(self.workspace).note_file(path,lineage.get('query_id') or lineage['inputs'][0])
         return path
 
     def register(self,path,stem):
@@ -173,6 +188,7 @@ def dispatch(conn,action,payload,job_id,environment):
         while row_key.casefold() in {c.casefold() for c in columns}:row_key+='_'
         record={'id':key,'module':manifest['id'],'version':manifest['version'],'name':manifest['name'],
                 'status':'preparing','created':time.time(),'sql':sql,'columns':columns,'row_key':row_key,'options':options}
+    if environment.get('companion_lineage'):record['companion_lineage']=environment['companion_lineage']
     ctx=Context(conn,workspace,directory,record,environment.get('cancelled') or threading.Event(),environment.get('emit') or (lambda value:None))
     try:
         ctx.update(status='preparing',error=None)
@@ -182,7 +198,10 @@ def dispatch(conn,action,payload,job_id,environment):
             if record.get('previous_run'):
                 previous=run_path(workspace,record['previous_run'])/'input.parquet'
                 shutil.copyfile(previous,partial)
-            else:conn.execute(f'COPY (SELECT row_number() OVER () AS {identifier(record["row_key"])}, source.* FROM ({record["sql"]}) source) TO {literal(partial)} (FORMAT PARQUET, COMPRESSION ZSTD)')
+            else:
+                from engine import parquet_query
+                frozen,_=parquet_query(conn,record['sql'])
+                conn.execute(f'COPY (SELECT row_number() OVER () AS {identifier(record["row_key"])}, source.* FROM ({frozen}) source) TO {literal(partial)} (FORMAT PARQUET, COMPRESSION ZSTD)')
             ctx.check_cancelled();partial.replace(directory/'input.parquet')
         if record.get('previous_run') and not record.get('queue_ready'):prepare_recheck_queue(ctx)
         ctx.update(total_rows=conn.execute(f'SELECT count(*) FROM {ctx.input}').fetchone()[0],status='running')
@@ -259,6 +278,7 @@ def manage(conn,workspace,payload,environment):
         partial=directory/'profiles.tmp';partial.write_text(json.dumps(saved),encoding='utf-8');partial.replace(directory/'profiles.json')
         return {'profiles':saved}
     record=read_run(workspace,payload['run_id']);directory=run_path(workspace,record['id'])
+    if environment.get('companion_lineage'):record['companion_lineage']=environment['companion_lineage']
     if str(operation or '').startswith('similarity_'):
         from modules.image_checker.similarity import manage as manage_similarity
         ctx=Context(conn,workspace,directory,record,environment.get('cancelled') or threading.Event(),environment.get('emit') or (lambda value:None))

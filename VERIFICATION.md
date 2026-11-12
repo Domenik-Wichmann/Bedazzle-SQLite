@@ -1,5 +1,15 @@
 # Bedazzle verification
 
+Claude Desktop integration and Follow controls (2026-11-12): see
+[COMPANION_VERIFICATION.md](COMPANION_VERIFICATION.md) for the real stdio/HTTP/worker
+tests, source integrity, separate edit/analysis gates, bounded transfers, module
+adapters, recovery and clean-package checks. The browser regression also verifies
+play/pause immediately left of night mode, fully minimized activity, drag/keyboard
+movement, persisted position/visibility, resize bounds, and jobs continuing without
+reopening the panel. Setup, upgrade and capability boundaries are in
+[COMPANION.md](COMPANION.md); README and the downloadable agent guide include the
+same controls and approval model. No autonomous-model correctness claim is made.
+
 Query builder compact layout (2026-11-12): options and join controls now share one top toolbar; its narrow-screen overflow scrolls horizontally. The canvas no longer reserves rows for join controls, routine status text, generated-SQL expansion or the repeated instruction footer. The existing isolated browser suite passes with added assertions that Distinct, filter matching, row limit and joins belong to the toolbar, the routine status/footer are hidden, zero clears the row limit, ArrowDown from empty and minus entry cannot make it negative, and arithmetic options contain only +, −, × and ÷. Native compiler checks verify numeric/string zero omit LIMIT and negative limits remain rejected for malformed saved configurations. All Query builder calculation, route-compatibility and Pivot browser regressions pass; screenshot: `workspace/query-builder-browser-1794441270775861400/query-builder-sample.png`. The nine original query and twelve arithmetic DuckDB checks, JavaScript syntax and bundle consistency checks pass. Pivot totals and grouping semantics are unchanged.
 
 Calculated columns (2026-11-12): `node tests/query_builder_calculations.cjs` executes 12 generated queries against native DuckDB, covering joined per-row arithmetic, all four arithmetic operators, grouped SUM(a-b) versus SUM(a)-SUM(b) with unmatched/NULL/invalid prices, numeric constants, division by zero, independently aggregated operands, average results, numeric filters/sorting, escaped/colliding headings and invalid formula validation. `runtime\python\python.exe tests/query_builder_http.py` now includes calculation browser coverage: dragging fields from different dataset cards into operands, named row differences, collapsing the card to under 85 pixels, category totals in both modes, result filters/sorting, SQL saving/handoff, reload persistence, removal/undo and numeric-constant division. Existing Query builder, missing-feature-route compatibility and Pivot browser regressions pass. Screenshots: `workspace/query-builder-browser-1794440463980441600/calculated-column-compact.png`, `calculated-category-totals.png` and `calculated-column-narrow.png`. The rebuilt bundles pass JavaScript syntax and bundle consistency checks; compatibility also passes against the already-running original server. Arithmetic uses DOUBLE conversions and does not establish exact decimal currency accounting or large-data performance.
