@@ -1,5 +1,5 @@
 'use strict';
-const $ = id => document.getElementById(id);
+const $ = id => document.getElementById(id) || window.bedazzleResultsWindow?.getElementById(id) || window.bedazzleChartWindow?.getElementById(id);
 const token = location.hash.slice(1) || sessionStorage.getItem('fieldwork-token') || '';
 if (token) sessionStorage.setItem('fieldwork-token', token);
 if (location.hash) history.replaceState(null, '', location.pathname);
@@ -7,7 +7,7 @@ const state = {data: null, selected: null, result: null, profile: null, view: 't
   importMode: 'open', busy: false, previous: [], groups: [], groupDataset: null, expanded: new Map(),
   library: 'saved', sort: null, sqlBeforeBuilder: '', activeSQL: '', groupBase: '', tabs: [], activeTab: null};
 const labels = {catalog: 'Opening your workspace', preview: 'Previewing your file', open: 'Opening your dataset',
-  convert: 'Converting to Parquet', query: 'Running your query', export: 'Exporting full results',
+  convert: 'Converting to Parquet', query: 'Running your query', export: 'Exporting full results',export_result:'Saving current results',
   count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset'};
 let draftTimer=null;
 
@@ -50,7 +50,7 @@ function toast(message, error = false, path = null) {
 }
 function report(error) {
   const message=error.message||String(error);
-  const dialog=[...document.querySelectorAll('dialog[open]')].at(-1);
+  const dialog=[...document.querySelectorAll('dialog[open]'),...(window.bedazzleResultsWindow?.querySelectorAll('dialog[open]')||[]),...(window.bedazzleChartWindow?.querySelectorAll('dialog[open]')||[])].at(-1);
   if(dialog){
     let box=dialog.querySelector('.modal-error');
     if(!box){box=node('div',{class:'modal-error',role:'alert',tabindex:'-1'});dialog.querySelector('h2')?.after(box);}
@@ -80,9 +80,9 @@ function setBusy(value, action = '') {
   state.busy = value;
   show('job-strip', value);
   $('job-label').textContent = labels[action] || 'Working';
-  $('job-detail').textContent = ['convert','export'].includes(action) ? 'Writing directly to disk. Your source file stays intact.' : 'Native DuckDB is working. You can cancel at any time.';
+  $('job-detail').textContent = ['convert','export','export_result'].includes(action) ? 'Writing directly to disk. Your source file stays intact.' : 'Native DuckDB is working. You can cancel at any time.';
   $('job-progress').style.width = '0%';
-  for (const id of ['run-query','confirm-import','preview-import','load-demo','count-rows','run-profile','confirm-export','save-settings','next-page','previous-page','explain-query']) $(id).disabled = value;
+  for (const id of ['run-query','confirm-import','preview-import','load-demo','count-rows','run-profile','export-results','confirm-export','save-settings','next-page','previous-page','explain-query']) $(id).disabled = value;
   show('import-busy', value && action === 'preview');
   if (!value) updatePaging();
 }
@@ -200,10 +200,11 @@ function newTab(name,sql){
 function closeTab(id){
   if(state.busy)return toast('Wait for the current operation or cancel it first.');
   if(state.tabs.length===1){toast('Keep one SQL tab open. You can replace its SQL or start a new tab.');return;}
-  cacheTab();const index=state.tabs.findIndex(item=>item.id===id);state.tabs.splice(index,1);
+  cacheTab();const index=state.tabs.findIndex(item=>item.id===id);const oldResult=state.tabs[index]?.result?.result_id;state.tabs.splice(index,1);if(oldResult)api('/api/release-result',{result_id:oldResult}).catch(()=>{});
   if(state.activeTab===id){state.activeTab=null;switchTab(state.tabs[Math.max(0,index-1)].id);}else{renderTabs();persistTabs();}
 }
 function updateLines() {
+  if (typeof scheduleSQLHighlight === 'function') scheduleSQLHighlight();
   const count=$('sql-editor').value.split('\n').length;
   if($('line-numbers').dataset.count!==String(count)){
     $('line-numbers').textContent = Array.from({length: count}, (_, i) => i+1).join('\n');
@@ -239,7 +240,24 @@ function builderColumns() {
   for (const option of $('group-columns').options) option.selected = selectedGroups.has(option.value);
 }
 function setMode(mode) {
+  if (mode === 'query-builder' && (!window.bedazzleQueryBuilder || typeof QueryBuilderSQL === 'undefined')) throw new Error('Query builder could not load. Refresh the page to reload the editor files.');
+  if (mode === 'pivot' && (!window.bedazzlePivot || !window.bedazzlePivotQuery)) {
+    throw new Error('Pivot files could not load. Quit Bedazzle, reopen Start Bedazzle.cmd, then refresh this page. SQL editor and Visual explorer are still available.');
+  }
+  if (state.mode === 'pivot' && mode !== 'pivot') window.bedazzlePivot?.leave();
+  if (state.mode === 'query-builder' && mode !== 'query-builder') window.bedazzleQueryBuilder?.leave();
+  const enteringBuilder=mode==='query-builder'&&state.mode!==mode;
   state.mode = mode;
+  document.body.classList.toggle('pivot-active', mode === 'pivot');
+  $('pivot-mode').classList.toggle('selected', mode === 'pivot');
+  for (const name of ['sql','explore','pivot','query-builder']) $(name+'-mode').setAttribute('aria-pressed', String(name === mode));
+  $('query-builder-mode').classList.toggle('selected',mode==='query-builder');
+  show('query-builder-pane',mode==='query-builder');
+  show('pivot-pane', mode === 'pivot');
+  $('run-query').firstChild.textContent = mode === 'pivot' ? '▶ Update pivot ' : '▶ Run query ';
+  if (mode === 'pivot') window.bedazzlePivot.enter();
+  if (enteringBuilder) window.bedazzleQueryBuilder.enter();
+  $('editor-hint').textContent = mode === 'query-builder' ? 'Drag fields to connect datasets or drop them into query areas · Ctrl+Enter to run' : mode === 'pivot' ? '' : 'Ctrl+Enter to run · Ctrl+Space for names · Select SQL to run a statement';
   $('sql-mode').classList.toggle('selected', mode === 'sql');
   $('explore-mode').classList.toggle('selected', mode === 'explore');
   show('sql-pane', mode === 'sql'); show('explore-pane', mode === 'explore');
@@ -277,6 +295,8 @@ function buildQuery() {
   return {sql: sql + ';', groups, dataset, aggregate, base:`SELECT * FROM ${sqlName(dataset)}${where}`};
 }
 async function executeEditor() {
+  if (state.mode === 'query-builder') return window.bedazzleQueryBuilder.run();
+  if (state.mode === 'pivot') return window.bedazzlePivot.update();
   let sql;
   if (state.mode === 'explore') {
     const built = buildQuery();
@@ -298,7 +318,7 @@ async function runSQL(sql, offset = 0, reset = true, extra = {}) {
   if (reset) state.previous = [];
   let previewed=false;
   try {
-    const result = await runJob('query', {sql, offset, size:Number($('page-size').value),force_count:reset,...extra},preview=>{
+    const result = await runJob('query', {sql, offset, size:Number($('page-size').value),force_count:reset,retain_result:true,...(!reset&&state.result?.result_id?{result_id:state.result.result_id}:{}),...(reset&&state.result?.result_id?{replace_result_id:state.result.result_id}:{}),...extra},preview=>{
       previewed=true;
       state.result=preview;state.activeSQL=sql;state.expanded.clear();renderResults();setResultView('table');
     });
@@ -363,10 +383,11 @@ function renderResults() {
   const notes = [];
   if (result.total_columns > result.columns.length) notes.push(`Showing ${result.columns.length} of ${result.total_columns} columns. Select fewer columns in SQL to see the others.`);
   if (result.clipped_cells) notes.push('Long values are shortened in the preview. Full exports preserve them.');
-  if (result.statement_count > 1) notes.push('This script ran multiple statements. To page or export its final SELECT, run that SELECT separately.');
+  if (result.statement_count > 1&&!result.retained) notes.push('This script ran multiple statements. To page or export its final SELECT, run that SELECT separately.');
   if (result.has_more && !/\border\s+by\b/i.test(result.sql)) notes.push('Add ORDER BY if you need a consistent row order across pages.');
   $('result-notice').textContent = notes.join(' '); show('result-notice',!!notes.length);
   updatePaging(); prepareChart();
+  window.bedazzlePivot?.decorate();
 }
 function renderResultSummary(){
   const result=state.result;if(!result)return;
@@ -378,25 +399,26 @@ function renderResultSummary(){
 function updatePaging() {
   const result = state.result;
   $('previous-page').disabled = state.busy || !state.previous.length;
-  $('next-page').disabled = state.busy || !(result?.logical_size>500 && result.total_rows!==undefined ? result.page_start+result.logical_size<result.total_rows : result?.has_more) || result.statement_count > 1;
+  $('next-page').disabled = state.busy || !(result?.logical_size>500 && result.total_rows!==undefined ? result.page_start+result.logical_size<result.total_rows : result?.has_more) || (result.statement_count > 1&&!result.retained);
   const start=result?.page_start??result?.offset??0;
   const end=result?.logical_size>500&&result.statement_count===1&&result.selectable?Math.min(start+result.logical_size,result.total_rows??start+result.rows.length):start+(result?.rows.length||0);
   $('page-label').textContent=result?`${result.rows.length?(start+1).toLocaleString():0}–${end.toLocaleString()}`:'—';
 }
 function setResultView(view) {
   state.view = view;
-  document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('selected',button.dataset.view === view));
+  $('table-view').closest('.results-panel').querySelectorAll('[data-view]').forEach(button => button.classList.toggle('selected',button.dataset.view === view));
   show('table-view',view === 'table' && !!state.result);
   show('chart-view',view === 'chart'); show('profile-view',view === 'profile');
   show('result-message',view === 'table' && !state.result);
   if (view === 'chart') renderChart();
 }
 async function sortColumn(column) {
-  if (!state.result || state.result.statement_count !== 1) throw new Error('Run a single SELECT before sorting its results.');
+  if(state.mode==='pivot'&&window.bedazzlePivot?.sortResult)return window.bedazzlePivot.sortResult(column);
+  if (!state.result || state.result.statement_count !== 1&&!state.result.retained) throw new Error('Run a single SELECT before sorting its results.');
   const direction = state.sort?.column === column && state.sort.direction === 'ASC' ? 'DESC' : 'ASC';
   const base = state.sort?.base || state.result.sql;
   state.sort = {column,direction,base};
-  await runSQL(base,0,true,{sort:{column,direction}});
+  await runSQL(base,0,true,{result_id:state.result.result_id,sort:{column,direction}});
   setEditor(state.result.sql);
 }
 function showRow(row) {
@@ -423,25 +445,11 @@ async function toggleGroup(tr,index,row) {
   tr.after(expanded); state.expanded.set(key,expanded); tr.querySelector('.drill-button>span').textContent='▾';
 }
 function prepareChart() {
-  if (!state.result) return;
-  const columns = state.result.columns;
-  fillOptions('chart-label',columns.map(c=>[c.name,c.name]));
-  const numeric = columns.filter(c=>/INT|DECIMAL|DOUBLE|FLOAT|REAL/.test(c.type));
-  fillOptions('chart-value',numeric.map(c=>[c.name,c.name]));
-  if (numeric.length) $('chart-value').value = numeric[numeric.length-1].name;
+  if (typeof quickPrepare === 'function') quickPrepare();
 }
 function renderChart() {
-  $('chart-content').replaceChildren();
-  if (!state.result?.rows.length || !$('chart-value').value) return $('chart-content').append(node('p',{class:'chart-empty'},'Run a query with a numeric column to make a chart. Counts and grouped summaries work well.'));
-  const label = state.result.columns.findIndex(c=>c.name === $('chart-label').value);
-  const value = state.result.columns.findIndex(c=>c.name === $('chart-value').value);
-  const rows = state.result.rows.slice(0,30).filter(row=>row[value] !== null && Number.isFinite(Number(row[value])));
-  const maximum = Math.max(1,...rows.map(row=>Math.abs(Number(row[value]))));
-  for (const row of rows) {
-    const bar = node('div',{class:'bar'+(Number(row[value]) < 0 ? ' bar-negative' : '')});
-    bar.style.width = Math.abs(Number(row[value]))/maximum*100+'%';
-    $('chart-content').append(node('div',{class:'bar-row'},node('span',{class:'bar-label',title:String(row[label])},row[label] ?? 'NULL'),node('div',{class:'bar-track'},bar),node('span',{class:'bar-value'},Number(row[value]).toLocaleString(undefined,{maximumFractionDigits:3}))));
-  }
+  if (typeof quickRender === 'function') quickRender();
+  else $('chart-content').replaceChildren(node('p',{class:'chart-empty'},'Chart tools did not load. Refresh this page, or restart Bedazzle and reopen it. Your query results are still available.'));
 }
 
 function importOptions() { return {types:$('import-types').value,delimiter:$('import-delimiter').value,header:$('import-header').checked}; }
@@ -496,17 +504,20 @@ async function confirmImport() {
     await selectDataset(output.name);
   } catch(error) { $('import-dialog').showModal();inlineError('import-error',error); }
 }
-function openExport() {
-  if (!state.result?.selectable) throw new Error('Run a SELECT query first, then export its complete result.');
-  $('export-sql').value = state.result.sql;
-  $('export-path').value = '';inlineError('export-error',null);$('export-dialog').showModal();
+let exportSelection=null;
+function openExport(result=state.result) {
+  if(!result?.selectable||!result.result_id)throw new Error('Run the query once to retain its current results before exporting.');
+  exportSelection={result_id:result.result_id,offset:result.offset,rows:result.rows.length,total:result.total_rows};
+  $('export-summary').textContent=Number(result.total_rows).toLocaleString()+' retained result rows; '+result.rows.length.toLocaleString()+' rows in the currently loaded window.';
+  $('export-scope').options[1].textContent='Displayed rows ('+result.rows.length.toLocaleString()+')';
+  $('export-scope').value='all';$('export-path').value='';inlineError('export-error',null);$('export-dialog').showModal();
 }
 async function confirmExport() {
   inlineError('export-error',null);
   if (!$('export-path').value.trim()) return inlineError('export-error',new Error('Choose where to save the export.'));
   $('export-dialog').close();
   try {
-    const output = await runJob('export',{sql:$('export-sql').value,format:$('export-format').value,output:$('export-path').value});
+    const output = await runJob('export_result',{...exportSelection,scope:$('export-scope').value,format:$('export-format').value,output:$('export-path').value});
     toast(`Export complete · ${Number(output.exported_rows).toLocaleString()} rows · ${humanBytes(output.bytes)}`,false,output.path);
     window.bedazzle?.celebrate('Export done',Number(output.exported_rows).toLocaleString()+' rows saved');
   } catch(error) { $('export-dialog').showModal();inlineError('export-error',error); }
@@ -544,9 +555,9 @@ function renderLibrary() {
     $('library-list').append(row);
   }
 }
-function saveDialog() { if (!$('sql-editor').value.trim()) throw new Error('Write a query first.');$('saved-name').value='';$('save-dialog').showModal();$('saved-name').focus(); }
+function saveDialog() { const sql=state.mode==='query-builder'?window.bedazzleQueryBuilder.sql():$('sql-editor').value;if (!sql.trim()) throw new Error('Write a query first.');$('saved-name').value='';$('save-dialog').showModal();$('saved-name').focus(); }
 async function saveQuery() {
-  const output=await api('/api/save',{name:$('saved-name').value,sql:$('sql-editor').value});
+  const output=await api('/api/save',{name:$('saved-name').value,sql:state.mode==='query-builder'?window.bedazzleQueryBuilder.sql():$('sql-editor').value});
   state.data.saved=output.saved;$('saved-count').textContent=output.saved.length;$('save-dialog').close();toast('Query saved to your library.');
 }
 function showSchema() {
@@ -557,7 +568,7 @@ function showSchema() {
 }
 function insertSQL(text) { const area=$('sql-editor');area.setRangeText(text,area.selectionStart,area.selectionEnd,'end');setMode('sql');area.focus();updateLines();cacheTab();persistTabs();localStorage.setItem(draftKey('editor'),area.value); }
 async function explain() {
-  const sql=state.mode==='explore'?buildQuery().sql:$('sql-editor').value;
+  const sql=state.mode==='query-builder'?window.bedazzleQueryBuilder.sql():state.mode==='explore'?buildQuery().sql:$('sql-editor').value;
   const output=await runJob('explain',{sql});
   $('detail-title').textContent='How DuckDB reads this query';$('detail-eyebrow').textContent='QUERY PLAN · NO DATA QUERY EXECUTED';
   renderPlan(output);$('detail-dialog').showModal();
@@ -612,7 +623,9 @@ async function init() {
   bind('browse-parquet','click',async()=>{const path=await picker('save','parquet',$('import-output').value);if(path){$('import-output').value=path;$('import-output').dataset.custom='true';}});
   bind('load-demo','click',async()=>{const output=await runJob('open',{path:state.data.demo_path,options:{types:'auto'}});await selectDataset(output.name);});
 
-  bind('sql-mode','click',()=>setMode('sql'));bind('explore-mode','click',()=>setMode('explore'));
+  bind('sql-mode','click',()=>state.mode==='query-builder'?window.bedazzleQueryBuilder.openSQL():state.mode==='pivot'?window.bedazzlePivot.openSQL():setMode('sql'));bind('explore-mode','click',()=>setMode('explore'));
+  bind('query-builder-mode','click',()=>setMode('query-builder'));
+  bind('pivot-mode','click',()=>setMode('pivot'));
   bind('builder-dataset','change',()=>{state.selected=$('builder-dataset').value;builderColumns();});
   bind('view-generated','click',()=>{setEditor(buildQuery().sql);setMode('sql');});
   bind('run-query','click',executeEditor);bind('cancel-job','click',cancelJob);
@@ -627,19 +640,22 @@ async function init() {
   });
   bind('next-page','click',async()=>{state.previous.push(state.result.page_start??state.result.offset);await runSQL(state.result.sql,state.result.logical_size>500?(state.result.page_start+state.result.logical_size):state.result.next_offset,false);});
   bind('previous-page','click',async()=>{const previous=state.previous.pop();await runSQL(state.result.sql,previous,false);});
-  bind('page-size','change',async()=>{if(state.result)await runSQL(state.result.sql);});
+  bind('page-size','change',async()=>{if(state.result){state.previous=[];await runSQL(state.result.sql,0,false);}});
   for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>setResultView(button.dataset.view));
   bind('chart-label','change',renderChart);bind('chart-value','change',renderChart);
   bind('run-profile','click',profile);bind('count-rows','click',async()=>{if(!state.selected)throw new Error('Choose a dataset first.');const result=await runJob('count',{name:state.selected});toast(`${result.name}: ${Number(result.count).toLocaleString()} records in the complete dataset.`);});
-  bind('export-results','click',openExport);bind('confirm-export','click',confirmExport);
+  bind('export-results','click',()=>openExport());bind('confirm-export','click',confirmExport);
   bind('export-format','change',()=>{$('export-path').value='';});
   bind('browse-export','click',async()=>{const format=$('export-format').value;const path=await picker('save',format,`${state.selected||'results'}-${Date.now()}.${format}`);if(path)$('export-path').value=path;});
+  bind('clear-results','click',async()=>{if(!confirm('Clear retained query results in this workspace? Datasets and saved SQL are kept. Run queries again to produce new results.'))return;await api('/api/clear-results',{});state.result=null;state.tabs.forEach(tab=>tab.result=null);show('table-view',false);show('result-message');$('result-message').textContent='Retained results cleared. Run a query to produce new results.';$('result-count').textContent='?';$('query-stat').textContent='No retained results';updatePaging();toast('Result cache cleared. Datasets and saved SQL are kept.');});
   bind('performance-nav','click',showSettings);bind('save-settings','click',saveSettings);
   bind('library-nav','click',()=>openLibrary('saved'));bind('history-nav','click',()=>openLibrary('history'));bind('library-search','input',renderLibrary);
   bind('save-query','click',saveDialog);bind('confirm-save','click',saveQuery);bind('show-schema','click',showSchema);bind('explain-query','click',explain);
   bind('quit','click',async()=>{if(state.busy&&!confirm('Stop the running operation and quit Bedazzle?'))return;flushDrafts();clearTimeout(draftTimer);await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/shutdown',{});document.body.replaceChildren(node('div',{class:'result-message'},'Bedazzle has stopped.',node('small',{},'You can close this tab. Your workspace is saved.')));});
   setupWorkbench();
-  setupModules();setupEditor();setupOrganization();
+  setupOrganization();setupModules();
+  // An optional editor enhancement must not prevent workspace navigation/startup.
+  try { if(typeof setupEditor==='function')setupEditor(); } catch(error) { report(error); }
   setInterval(refreshLiveResources,10000);window.addEventListener('focus',refreshLiveResources);
   if(state.data.catalog.length)workArea();
   // Restore metadata only. Never re-run saved SQL or expensive scans on launch.

@@ -4,7 +4,7 @@ const path = require('path');
 const assert = require('assert/strict');
 process.env.PLAYWRIGHT_BROWSERS_PATH = path.resolve('.test-tools/browsers');
 const {chromium} = require('../.test-tools/node_modules/playwright');
-const session = JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','utf8'));
+const session = JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json','utf8'));
 const artifacts = path.resolve('workspace/verification');
 fs.mkdirSync(artifacts,{recursive:true});
 
@@ -82,7 +82,8 @@ async function main() {
     await page.locator('#filter-column').selectOption('');
     await page.locator('#run-query').click();await waitIdle();
     await page.locator('[data-view="chart"]').click();
-    assert.equal(await page.locator('.bar-row').count(),3);
+    await page.locator('#chart-content svg').waitFor();
+    assert.equal(await page.evaluate(()=>quickChart.getOption().series[0].data.length),3);
     await page.screenshot({path:path.join(artifacts,'chart.png'),fullPage:true});
     console.log('PASS: visual grouping, expandable records, and chart rendering');
 

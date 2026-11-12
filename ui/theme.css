@@ -1,0 +1,134 @@
+:root {
+  color-scheme: light;
+  --surface: #ffffff;
+  --border: #dce5d3;
+  --sql-text: #314337;
+  --sql-keyword: #8250ab;
+  --sql-function: #2468a2;
+  --sql-string: #96701c;
+  --sql-number: #b45335;
+  --sql-comment: #718374;
+  --sql-identifier: #16766b;
+}
+#theme-toggle {margin-left:auto;flex:0 0 32px;width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--border);border-radius:50%;color:#647456;background:var(--surface)}
+#theme-toggle:hover {border-color:#91ad76;background:#e8efdf}
+#theme-toggle svg {grid-area:1/1;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#theme-toggle .theme-sun {display:none}
+/* Both layers must have identical metrics to preserve caret and selection alignment. */
+.sql-pane #sql-highlight,.sql-pane #sql-editor {font:13px/1.8 Consolas,'Courier New',monospace;tab-size:2;letter-spacing:normal;font-variant-ligatures:none;padding:12px 16px 12px 76px!important;border:0;border-radius:0;white-space:pre;text-align:left}
+.sql-pane #sql-highlight {position:absolute;inset:0;margin:0;overflow:hidden;pointer-events:none;color:var(--sql-text);background:transparent;z-index:0}
+.sql-pane #sql-editor {position:relative;z-index:1;background:transparent;color:var(--sql-text);caret-color:var(--sql-text)}
+.sql-pane.sql-highlight-ready #sql-editor {color:transparent;-webkit-text-fill-color:transparent}
+.sql-pane #sql-editor::placeholder {color:#82917b;-webkit-text-fill-color:#82917b}
+.sql-pane #sql-editor::selection {background:#87acdd55}
+.sql-pane .line-numbers {z-index:2}
+.sql-keyword {color:var(--sql-keyword);font-weight:normal}
+.sql-function {color:var(--sql-function)}
+.sql-string {color:var(--sql-string)}
+.sql-number,.sql-literal {color:var(--sql-number)}
+.sql-comment {color:var(--sql-comment);font-style:italic}
+.sql-id {color:var(--sql-identifier)}
+.sql-punct {color:var(--sql-text)}
+#beautify-query {display:inline-flex;align-items:center;gap:5px}
+.beautify-control {display:inline-flex;align-items:center;gap:1px}
+#beautify-options {padding:3px 5px;border-radius:4px;font-size:11px;min-width:22px}
+#beautify-options:hover {background:#e8efdf}
+#beautify-menu {position:fixed;inset:auto;margin:0;width:286px;max-width:calc(100vw - 16px);padding:6px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:#314337;box-shadow:0 12px 36px #0003;z-index:100}
+#beautify-menu::backdrop {background:transparent}
+#beautify-menu .beautify-style {display:block;text-align:left;width:100%;padding:10px 12px;border-radius:6px}
+#beautify-menu .beautify-style strong {display:block;font-size:12px}
+#beautify-menu .beautify-style small {display:block;font-size:11px;opacity:.7;margin-top:3px}
+#beautify-menu .beautify-style[aria-checked=true] strong:after {content:' ✓';float:right}
+#beautify-menu .beautify-style:hover,#beautify-menu .beautify-style:focus-visible {background:#edf2e9}
+.beautify-line-length {display:flex;align-items:center;justify-content:space-between;padding:9px 12px 5px;border-top:1px solid var(--border);font-size:11px}
+.beautify-line-length select {width:116px;font-size:11px;padding:5px;margin:0}
+#beautify-width-hint {font-size:10px;opacity:.7;margin:4px 12px 8px}
+.sql-code-line {display:block;min-height:1.8em}
+.sql-pane.sql-wrap #sql-editor,.sql-pane.sql-wrap #sql-highlight {white-space:pre-wrap;overflow-wrap:break-word;word-break:normal}
+.pivot-field-hint {font-size:10px;line-height:1.5;color:#839473}
+html[data-theme=dark] {
+  color-scheme:dark;
+  --surface:#14161b;--border:#30343e;
+  --sql-text:#e4e6ed;--sql-keyword:#c6a1f1;--sql-function:#80c5f1;
+  --sql-string:#e4c581;--sql-number:#f1a281;--sql-comment:#8d94a6;--sql-identifier:#8dcde8;
+  --ink:#e4e6ed;--muted:#a2a7b5;--raised:#1d2028;--accent:#aebdff;
+  scrollbar-color:#515766 #101217;
+}
+html[data-theme=dark] body {background:#090a0d;color:var(--ink)}
+html[data-theme=dark] :is(.sidebar) {background:#0d0e12}
+html[data-theme=dark] #theme-toggle {color:#e4c581;background:#1d2028}
+html[data-theme=dark] #theme-toggle .theme-sun {display:block}
+html[data-theme=dark] #theme-toggle .theme-moon {display:none}
+html[data-theme=dark] .icon-button {background:#1d2028;color:#bec3d0;border-color:var(--border)}
+html[data-theme=dark] kbd {background:#20232c;border-color:#424958;color:#e4e6ed}
+html[data-theme=dark] :is(.topbar,.panel,.panel-toolbar,.query-tabs,.editor-footer,.results-footer,.main-footer,.detail-row,.modal-footer,.form-grid,.module-limits,.module-run,.workspace-menu-footer,.workspace-card,.de-grid-wrap,.de-draft) {border-color:var(--border)}
+html[data-theme=dark] :is(.panel,.modal,.workspace-card,.workspace-menu,.help-popover,#suggestions,.toast,.plan-node,.repository-settings,.de-grid-wrap) {background:var(--surface);color:var(--ink);border-color:var(--border)}
+html[data-theme=dark] :is(.panel-toolbar,.editor-footer,.results-footer,.query-tabs,.modal-footer,.segmented,.chart-controls,.module-input-note,.module-stat,.callout,.plan-node,.format-tags span,.feature-cards>div,.import-preview,.schema-list button,.notice,.de-grid-wrap th,.pivot-zone,.pivot-builder,.pivot-fields,.pivot-results,.pivot-filter,.pivot-field-rail) {background:#191c23;border-color:var(--border);color:var(--ink)}
+html[data-theme=dark] :is(input,select,textarea) {background:#101217;color:var(--ink);border-color:var(--border)}
+html[data-theme=dark] :is(input,textarea)::placeholder {color:#8d94a6}
+html[data-theme=dark] :is(h1,h2,h3,.workspace-card h2,.workspace-card h3,.empty-state h2,#workspace-title,.plan-node>strong,.module-stat strong,.profile-intro h3,.query-tab.active,#suggestions button strong,.schema-list button,.workspace-card-name) {color:#edf0f7}
+html[data-theme=dark] :is(.muted,.eyebrow,.header-home,.header-separator,#workspace-subtitle,.text-button,.icon-button,.expand-button,.editor-footer,.results-footer,.main-footer,.modal-description,.form-hint,.modal-eyebrow,.field-label,.builder-note,.result-message,.result-message small,.profile-intro p,.chart-controls>span,.plan-info dt,.help-popover p,.help-popover strong,.schema-list small,.module-fields small,.module-run small,.module-review-table small,.module-safe-url,#module-status,.workspace-home-heading p,.workspace-card p,.workspace-card small,.workspace-menu-item small,.workspace-menu-footer button,#suggestions button small) {color:var(--muted)}
+html[data-theme=dark] .button.primary {background:#aebdff;color:#101321;border-color:#aebdff}
+html[data-theme=dark] .button.primary:hover {background:#c7d1ff}
+html[data-theme=dark] :is(.button.secondary,.import-mode button,.result-tabs button,.segmented button,.query-tab,.new-tab) {color:#bec3d0;border-color:var(--border)}
+html[data-theme=dark] .button.secondary {background:#20232c}
+html[data-theme=dark] :is(.button.secondary:hover,.segmented button.selected,.import-mode button.selected,.query-tab.active,#focus-tabs button.selected,.workspace-menu-item.selected,.workspace-menu-item:hover,#suggestions button.active,.schema-list button:hover) {background:#2b3143;color:#e0e5ff}
+html[data-theme=dark] :is(.query-tabs>.expand-button,#suggestions button:hover) {background:#20232c}
+html[data-theme=dark] :is(.button.danger,.modal-error) {background:#402a27;border-color:#70504b;color:#f2b6a6}
+html[data-theme=dark] :is(.result-tabs button.selected,.count-badge,.profile-stat strong,.chart-value) {color:var(--accent)}
+html[data-theme=dark] .count-badge {background:#2b3143}
+html[data-theme=dark] .sql-pane {background:#0e1015}
+html[data-theme=dark] .sql-pane .line-numbers {background:#0e1015;color:#737d92;border-color:var(--border)}
+html[data-theme=dark] :is(th,.module-review-table th) {background:#20242e;color:#c8cddb;border-color:var(--border)}
+html[data-theme=dark] td {color:var(--ink);border-color:#292d37}
+html[data-theme=dark] tbody tr:nth-child(even) {background:#171a20}
+html[data-theme=dark] tbody tr:hover {background:#252a36}
+html[data-theme=dark] :is(.row-number,.null-value) {color:#969fb2;background:#12151b}
+html[data-theme=dark] :is(.expanded-row>td,.expanded-records,.detail-row,.chart-view,.profile-view,.table-view) {background:var(--surface)}
+html[data-theme=dark] :is(.job-strip,.notice,.callout) {background:#202432;color:#c6cee9;border-color:var(--border)}
+html[data-theme=dark] .help-badge {background:#3b3825;color:#efcf8b;border-color:#8d7c4b}
+html[data-theme=dark] .help-popover {box-shadow:0 12px 35px #0006}
+html[data-theme=dark] .de-cell {background:transparent;color:var(--ink)}
+html[data-theme=dark] .de-cell.de-modified {background:#453d21;color:#f1deb1}
+html[data-theme=dark] .de-cell:focus {background:#39324d}
+html[data-theme=dark] .de-grid-wrap td {border-color:var(--border)}
+html[data-theme=dark] .modal::backdrop {background:#020307bf}
+html[data-theme=dark] .celebration-label {color:#d0d8f4;text-shadow:0 1px 3px #000}
+html[data-theme=dark] :is(.pivot-field-panel,.pivot-pane,.pivot-chip,.pivot-fold) {background:#191c23;border-color:var(--border);color:var(--ink)}
+html[data-theme=dark] :is(.pivot-pane,.pivot-field-panel) :is(input:not([type=checkbox]),select) {background:#101217;color:var(--ink);border-color:var(--border)}
+html[data-theme=dark] :is(.pivot-field-panel>strong,.pivot-zone h3) {background:#20232c;color:#d0d8f4;border-color:var(--border)}
+html[data-theme=dark] :is(.pivot-field,.pivot-field small,.pivot-field-icon,.pivot-small,.pivot-drop-hint,.pivot-top #pivot-status,.pivot-saved-row span) {color:var(--muted)}
+html[data-theme=dark] :is(.pivot-field:hover,.pivot-drop.drag-over,.pivot-fold:hover) {background:#2b3143}
+html[data-theme=dark] .pivot-total-row td {background:#272d3d!important;border-color:var(--border)}
+html[data-theme=dark] .pivot-result thead .pivot-bands th {background:#20232c;border-color:var(--border)}
+html[data-theme=dark] :is(.workspace-kind,.workspace-avatar,.workspace-metrics strong) {background:#20232c;color:#d0d8f4}
+html[data-theme=dark] :is(.workspace-metrics small,.workspace-dates,.workspace-card-actions .text-button) {color:var(--muted)}
+html[data-theme=dark] :is(.hardware-cards>div,.pivot-small,.import-mode,.bar-track,.expanded-table table,#detail-content pre,.inline-warning,.file-illustration,.parquet-illustration) {background:#20232c;color:var(--ink);border-color:var(--border)}
+html[data-theme=dark] :is(.hardware-cards strong,.hardware-cards small,.pivot-small,.parquet-illustration small,.file-illustration span) {color:#d0d8f4}
+html[data-theme=dark] :is(.pivot-small:hover,.close-button:hover,.expand-button:hover,.pivot-measure-options summary:hover) {background:#2b3143;color:var(--ink)}
+html[data-theme=dark] :is(.file-illustration i,.workspace-picker option) {background:#2b3143;color:var(--ink)}
+html[data-theme=dark] :is(.modal label,.pivot-pane label,.pivot-field-panel label,#editor-status,.close-button) {color:var(--muted)}
+/* The pivot rail's base rule includes body.pivot-active and loads after this bundle. */
+html[data-theme=dark] body.pivot-active .pivot-field-panel {background:var(--surface);color:var(--ink);border-color:var(--border)}
+html[data-theme=dark] #beautify-menu {background:#191c23;color:var(--ink);border-color:var(--border)}
+html[data-theme=dark] #beautify-menu .beautify-style:hover,html[data-theme=dark] #beautify-menu .beautify-style:focus-visible,html[data-theme=dark] #beautify-options:hover {background:#2b3143}
+html[data-theme=dark] #beautify-menu .beautify-style[aria-checked=true] {color:var(--accent)}
+html[data-theme=dark] :is(.pivot-field-hint,.sidebar .nav-item,.sidebar-section,.sidebar-section button,.sidebar-empty,.sidebar-footer,.sidebar-footer button,.brand small,.dataset-text small,.dataset-rename,.dataset-remove,.engine-card,.engine-card p,.resource-line,.workspace-nav-group>button) {color:var(--muted)}
+html[data-theme=dark] :is(.sidebar .nav-item:hover,.sidebar .nav-item.active,.dataset-item:hover,.dataset-item.selected,.dataset-row.selected,.workspace-nav-group,.dataset-icon) {background:#20242e;color:#dde3f4;border-color:var(--border)}
+html[data-theme=dark] .dataset-item {color:#c4cad8}
+html[data-theme=dark] :is(.dataset-icon,.engine-card,.workspace-nav-group) {border-color:var(--border)}
+html[data-theme=dark] .status-dot,html[data-theme=dark] .bar-fill {background:#9cacf2}
+html[data-theme=dark] :is(input,.pivot-check input) {accent-color:#9cacf2}
+html[data-theme=dark] :is(button,a,input,textarea,select):focus-visible {outline-color:#9cacf2}
+html[data-theme=dark] :is(.result-tabs button.selected,.pivot-options,.pivot-saved-row,.pivot-fold,.pivot-small) {border-color:var(--border)}
+html[data-theme=dark] .sql-pane #sql-editor::placeholder {color:#737d92;-webkit-text-fill-color:#737d92}
+html[data-theme=dark] #panel-divider:after {background:#424958}
+html[data-theme=dark] #theme-toggle:hover {background:#2b3143;border-color:#67718e}
+html[data-theme=dark] .beautify-line-length {color:var(--muted)}
+html[data-theme=dark] .result-tabs button.selected:after {background:#9cacf2}
+html[data-theme=dark] :is(.result-message>span,.header-pencil,.bar-label,.bar-value) {color:var(--muted)}
+html[data-theme=dark] .button.primary:hover {box-shadow:0 0 0 1px #9cacf2,0 3px 13px #9cacf220}
+html[data-theme=dark] :is(.resource-line,.nav-count) {border-color:var(--border)}
+body.pivot-active .beautify-control {display:none}
+@media(max-width:800px) {#beautify-query {display:inline-flex!important;font-size:10px}.editor-tools {flex-wrap:wrap}.panel-toolbar {flex-wrap:wrap}}
+@media(forced-colors:active) {.sql-pane.sql-highlight-ready #sql-editor {color:CanvasText;-webkit-text-fill-color:CanvasText}.sql-pane #sql-highlight {visibility:hidden}}

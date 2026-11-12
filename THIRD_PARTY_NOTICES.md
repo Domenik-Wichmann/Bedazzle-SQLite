@@ -21,3 +21,11 @@ The source bootstrap also pins official Pillow 13.0.0 cp312/cp313/cp315 Windows 
 The source-only launcher downloads these same artifacts on first use and verifies their hashes. The embedded Python path file is configured to find the app and engine; system Python/settings are unchanged. Source history excludes runtime binaries. The current app does not need or ship the earlier DuckLocal executable or its source checkout.
 
 Playwright and Chromium are test-only dependencies, excluded from source/release artifacts. The UI uses fonts available on the user's system and its own HTML/CSS/SVG; no external font/script/CDN is required.
+
+## SQL Formatter 15.9.0
+
+The Beautify command bundles SQL Formatter (MIT license), from https://github.com/sql-formatter-org/sql-formatter. The license is included at `ui/vendor/sql-formatter.LICENSE`. It runs locally with the DuckDB dialect.
+
+## Apache ECharts
+
+The offline chart renderer at `ui/vendor/echarts.min.js` is Apache ECharts 6.0.0, distributed under Apache-2.0. Its license and upstream notices are included beside it as `echarts.LICENSE` and `echarts.NOTICE`. Source: https://github.com/apache/echarts (npm package `echarts@6.0.0`).

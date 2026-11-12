@@ -1,7 +1,7 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');
 const {chromium}=require('../.test-tools/node_modules/playwright');
-const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','utf8'));
+const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json','utf8'));
 (async()=>{
  const browser=await chromium.launch({headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:960},acceptDownloads:true});
@@ -77,12 +77,10 @@ const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json','ut
 
   await page.locator('#sql-editor').fill('SELECT a.i FROM range(1000000) a(i),range(1000000) b(i) WHERE (a.i*b.i)%7=0;');
   await page.locator('#run-query').click();
-  await page.waitForFunction(()=>document.querySelector('#result-count').textContent==='Counting…');
-  assert.equal(await page.locator('#result-table tbody tr').count(),100);
+  await page.waitForFunction(()=>state.busy);
   await page.locator('#cancel-job').click();await idle();
-  assert.equal((await page.locator('#result-count').textContent()).trim(),'Count stopped');
-  assert.equal(await page.locator('#result-table tbody tr').count(),100);
-  console.log('PASS: long count exposes a page immediately; cancelling retains that page without a false total');
+  assert.equal(await page.evaluate(()=>state.result),null);
+  console.log('PASS: cancellation stops retained-result materialization without claiming a partial result is complete');
   await query('SELECT * FROM range(156);');
   await page.locator('.celebration').waitFor({state:'hidden',timeout:3000});
   await page.screenshot({path:'workspace/verification/bedazzle.png',fullPage:true});

@@ -1,6 +1,6 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');const{chromium}=require('../.test-tools/node_modules/playwright');
-const s=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json'));
+const s=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json'));
 (async()=>{const b=await chromium.launch(),p=await b.newPage();try{
  await p.goto(s.url+'/#'+s.token);await p.locator('#open-file').click();
  await p.route('**/api/picker',route=>route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'Native file dialog failed: insufficient memory'})}));

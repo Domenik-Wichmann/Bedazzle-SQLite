@@ -1,6 +1,6 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');const{chromium}=require('../.test-tools/node_modules/playwright');
-const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json'));
+const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json'));
 (async()=>{const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:1366,height:768}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try{
  await page.goto(session.url+'/#'+session.token);await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();

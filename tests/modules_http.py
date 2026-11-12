@@ -1,5 +1,6 @@
 """Real isolated worker -> loopback image server -> report -> stable merge -> browser."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from image_fixture import Images
 
 def main():
     sys.stdout.reconfigure(encoding='utf-8')
-    session=json.loads((ROOT/'workspace'/'http-smoke-session.json').read_text())
+    session=json.loads(Path(os.environ.get('BEDAZZLE_TEST_SESSION',str(ROOT/'workspace'/'http-smoke-session.json'))).read_text())
     images=Images()
     def request(path,payload=None):
         req=urllib.request.Request(session['url']+path,data=json.dumps(payload).encode() if payload is not None else None,headers={'X-Workbench-Token':session['token']})
@@ -40,6 +41,7 @@ def main():
         print('PASS: native module worker handles all 1,234 rows, requests one repeated URL once, and joins without row multiplication')
         (ROOT/'workspace'/'module-smoke-fixture.json').write_text(json.dumps({'url':images.url}))
         subprocess.run(['node',str(ROOT/'tests'/'modules_browser.cjs')],cwd=ROOT,check=True,timeout=180)
+        subprocess.run(['node',str(ROOT/'tests'/'similarity_browser.cjs')],cwd=ROOT,check=True,timeout=180)
     finally:images.close()
 
 

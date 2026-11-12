@@ -1,7 +1,117 @@
 'use strict';
+// A DOM portal, not another application boot: retained results and all handlers
+// continue to belong to this exact page. No tokens or query data enter a URL.
+function setupDetachedResults(){
+  const instance=crypto.randomUUID(),panel=document.querySelector('.results-panel');
+  const palette=[['Blue','#2563eb'],['Green','#16a34a'],['Yellow','#eab308'],['Red','#dc2626'],['Purple','#9333ea'],['Orange','#ea580c'],['Cyan','#0891b2'],['Pink','#db2777']];
+  const counter=Number(document.cookie.split('; ').find(v=>v.startsWith('bedazzle-pair='))?.split('=')[1])||0;
+  const [colorName,color]=palette[counter%palette.length];
+  window.bedazzlePair={instance,colorName,color};
+  document.cookie=`bedazzle-pair=${(counter+1)%palette.length}; Path=/; SameSite=Strict`;
+  let child=null,moved=[],timer=null,oldFocus='',restoring=false;
+  const button=node('button',{id:'detach-results',class:'icon-button expand-button',type:'button',
+    title:'Open results in a new tab','aria-label':'Open results in a new tab'},'↗');
+  $('expand-results').before(button);
+  const status=node('span',{id:'detached-results-status',class:'hidden',role:'status'});
+  const returnButton=node('button',{id:'return-results',class:'text-button hidden',type:'button',onclick:()=>restore()},'Bring results back');
+  document.querySelector('.topbar').append(status,returnButton);
+  function restore(close=true){
+    if(!child||restoring)return;
+    restoring=true;clearInterval(timer);
+    const previous=child;child=null;
+    // Adopt back even when the browser has already closed the child window.
+    for(const {element,marker} of moved){marker.replaceWith(element);}
+    moved=[];window.bedazzleResultsWindow=null;
+    document.body.classList.remove('results-detached');
+    document.querySelectorAll('.detached-pair-control').forEach(e=>e.remove());
+    panel.querySelectorAll('.detached-pair-control').forEach(e=>e.remove());
+    status.classList.add('hidden');returnButton.classList.add('hidden');
+    $('expand-results').classList.remove('hidden');
+    $('expand-results').style.removeProperty('display');
+    $('expand-editor')?.style.removeProperty('display');
+    button.textContent='↗';button.title=button.ariaLabel='Open results in a new tab';
+    focusPanel(oldFocus);restoring=false;
+    if(close&&!previous.closed)previous.close();
+  }
+  function update(){
+    if(!child)return;
+    if(child.closed){restore(false);return;}
+    const doc=child.document,tab=state.tabs.find(t=>t.id===state.activeTab);
+    const workspace=$('workspace-name').textContent,label=`${colorName} · ${workspace} · ${tab?.name||'Query'} · Session ${instance.slice(0,8)}`;
+    const info=doc.getElementById('results-link');
+    if(info.textContent!==label)info.textContent=label;
+    info.title=`Follows the active query in its original page. Query ID: ${state.activeTab}`;
+    const sql=doc.getElementById('detached-source-sql'),value=state.result?.sql||'No query results in this tab.';
+    if(sql.textContent!==value)sql.textContent=value;
+    doc.title=`Results — ${label}`;
+    doc.documentElement.dataset.theme=document.documentElement.dataset.theme||'light';
+    // Keep layout-specific result styling (e.g. pivot) in step with the owner.
+    doc.body.className=document.body.className+' detached-results-window';
+    const tabs=$('query-tabs');
+    $('expand-editor')?.style.setProperty('display','none','important');
+    if(tabs&&!tabs.querySelector('.detached-pair-color')){
+      tabs.append(node('button',{class:'icon-button expand-button detached-pair-control',type:'button',title:'Bring results back','aria-label':'Bring results back',onclick:()=>restore()},'↙'),colorButton());
+    }
+  }
+  function colorButton(){
+    const control=node('button',{class:'icon-button expand-button detached-pair-control detached-pair-color',type:'button',
+      title:`${colorName} pair · Session ${instance.slice(0,8)}. Double-click or press Enter to reunite editor and results.`,
+      'aria-label':`${colorName} linked pair. Double-click or press Enter to reunite editor and results.`,
+      onclick:event=>{if(event.detail===0)restore();},ondblclick:()=>restore()});
+    control.style.setProperty('background',color,'important');
+    control.style.border='2px solid var(--border)';control.style.borderRadius='5px';
+    control.style.marginLeft='0';control.style.width='28px';control.style.height='26px';control.style.flex='0 0 28px';
+    return control;
+  }
+  function move(element,container){
+    if(!element)return;
+    const marker=document.createComment('detached-results return position');
+    element.before(marker);moved.push({element,marker});container.append(element);
+  }
+  button.addEventListener('click',()=>{
+    if(child&&!child.closed){restore();return;}
+    // Called synchronously inside the user gesture so popup blockers can allow it.
+    const opened=window.open('about:blank','bedazzle-results-'+instance);
+    if(!opened){toast('Allow pop-ups for Bedazzle to open results in a new tab.',true);return;}
+    child=opened;oldFocus=focusView;
+    try{
+      const doc=child.document;
+      doc.documentElement.lang='en';doc.head.replaceChildren();doc.body.replaceChildren();
+      const meta=doc.createElement('meta');meta.name='viewport';meta.content='width=device-width,initial-scale=1';doc.head.append(meta);
+      for(const link of document.querySelectorAll('link[rel="stylesheet"],link[rel="icon"]')){
+        const copy=link.cloneNode(true);copy.href=link.href;doc.head.append(copy);
+      }
+      const header=node('header',{class:'detached-header'},node('strong',{id:'results-link'}),
+        node('button',{class:'button secondary compact',onclick:()=>window.focus()},'Go to editor'),
+        node('button',{class:'button secondary compact',onclick:()=>restore()},'Bring results back'),
+        node('button',{id:'help-toggle',class:'text-button','aria-pressed':'false'},node('span',{id:'help-toggle-label'},'Tips off')),
+        node('button',{id:'download-instructions',class:'text-button'},'Agent instructions'),
+        node('details',{},node('summary',{},'SQL for displayed results'),node('pre',{id:'detached-source-sql'})));
+      doc.body.append(header);
+      window.bedazzleResultsWindow=doc;
+      move(panel,doc.body);
+      button.after(colorButton());
+      for(const id of ['job-strip','toast-container','detail-dialog','export-dialog','module-dialog','module-history-dialog','data-editor','de-drafts','de-cell-dialog','de-save-dialog','instructions-dialog'])move(document.getElementById(id),doc.body);
+      // The help layer is document-local, with no second query engine or app init.
+      const help=doc.createElement('script');help.src=new URL('/bedazzle.js',location.href).href;doc.head.append(help);
+      $('expand-results').classList.add('hidden');
+      $('expand-results').style.setProperty('display','none','important');
+      button.textContent='↙';button.title=button.ariaLabel='Bring results back';
+      document.body.classList.add('results-detached');
+      status.textContent=`${colorName} pair · Session ${instance.slice(0,8)}`;
+      status.classList.remove('hidden');returnButton.classList.remove('hidden');focusPanel('editor');
+      child.addEventListener('pagehide',()=>restore(false),{once:true});
+      update();timer=setInterval(update,250);
+    }catch(error){restore();report(error);}
+  });
+  // A reloaded/navigated owner ends the link rather than leaving stale live UI.
+  window.addEventListener('pagehide',()=>{if(child){const previous=child;restore(false);if(!previous.closed)previous.close();}});
+}
+
 let focusView='', virtualTimer=null, virtualGeneration=0, virtualScroll=0;
 function draftKey(kind){return 'bedazzle:'+(state.data?.workspace||'startup')+':'+kind;}
 function focusPanel(view){
+  if(window.bedazzleResultsWindow)view='editor';
   focusView=view;$('work-area').dataset.focus=view;show('focus-tabs',!!view);
   for(const button of document.querySelectorAll('[data-focus]'))button.classList.toggle('selected',button.dataset.focus===view);
   for(const name of ['editor','results']){const button=$('expand-'+name);if(!button)continue;button.textContent=view?'↙':'⛶';button.setAttribute('aria-label',view?'Restore split view':'Expand '+name);button.title=button.getAttribute('aria-label');}
@@ -26,7 +136,7 @@ function virtualPixelAt(result,row){
 function renderVirtualRows(){
   const result=state.result,scroller=$('table-scroll');
   scroller.classList.toggle('virtual-page',!!(result?.logical_size>500&&result.total_rows!==undefined&&result.statement_count===1&&result.selectable));
-  if(!scroller.classList.contains('virtual-page')||result.statement_count!==1||!result.selectable)return;
+  if(!scroller.classList.contains('virtual-page')||(result.statement_count!==1&&!result.retained)||!result.selectable)return;
   const body=$('result-table')?.tBodies[0];if(!body)return;
   body.querySelectorAll('.virtual-spacer').forEach(item=>item.remove());
   const {count,unit}=virtualGeometry(result),start=result.offset-result.page_start;
@@ -35,7 +145,7 @@ function renderVirtualRows(){
   body.prepend(spacer(start*unit));body.append(spacer((count-start-result.rows.length)*unit));scroller.scrollTop=virtualScroll;
 }
 async function loadVirtualWindow(){
-  const result=state.result;if(!result||result.logical_size<=500||result.total_rows===undefined||state.busy||result.statement_count!==1||!result.selectable)return;
+  const result=state.result;if(!result||result.logical_size<=500||result.total_rows===undefined||state.busy||(result.statement_count!==1&&!result.retained)||!result.selectable)return;
   const {count}=virtualGeometry(result),scroller=$('table-scroll'),wanted=virtualRowAt(result,scroller.scrollTop);
   const loadedStart=result.offset-result.page_start,visible=Math.ceil(scroller.clientHeight/32)+5;
   if(wanted>=loadedStart&&wanted+visible<loadedStart+result.rows.length)return;
@@ -43,7 +153,7 @@ async function loadVirtualWindow(){
   if(window===loadedStart)return;
   const generation=virtualGeneration;virtualScroll=scroller.scrollTop;
   try{
-    const next=await runJob('query',{sql:result.sql,offset:result.page_start,size:result.logical_size,window});
+    const next=await runJob('query',{sql:result.sql,offset:result.page_start,size:result.logical_size,window,result_id:result.result_id,retain_result:!result.result_id});
     if(generation!==virtualGeneration)return;
     const anchor=virtualRowAt(result,scroller.scrollTop);
     virtualScroll=virtualPixelAt(next,anchor);
@@ -83,6 +193,7 @@ async function instructions(copy){
   }catch(error){status.textContent=error.message;}
 }
 function setupWorkbench(){
+  setupDetachedResults();
   const registry=state.data.workspaces;
   $('workspace-name').textContent=registry.items.find(item=>item.id===registry.selected).name;
   $('page-size').value=state.data.settings.default_page_size||100;

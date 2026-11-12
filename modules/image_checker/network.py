@@ -10,13 +10,14 @@ import time
 import warnings
 import zlib
 from urllib.parse import urlsplit, urljoin, unquote
+from modules.image_checker.quality import classify, redact_url
 
 FORMATS=['JPEG','PNG','GIF','WEBP','TIFF','BMP','ICO','AVIF','JPEG2000','PPM','TGA','PCX']
 EXTENSIONS={'.jpg':'JPEG','.jpeg':'JPEG','.jpe':'JPEG','.png':'PNG','.gif':'GIF','.webp':'WEBP',
             '.tif':'TIFF','.tiff':'TIFF','.bmp':'BMP','.ico':'ICO','.avif':'AVIF','.jp2':'JPEG2000'}
 # Stable fields let an empty/failed report have the same schema as a successful one.
 SCHEMA={
- 'url':'VARCHAR','check_status':'VARCHAR','error':'VARCHAR','warnings':'VARCHAR','checked_at':'VARCHAR',
+ 'warning_text':'VARCHAR','url':'VARCHAR','check_status':'VARCHAR','error':'VARCHAR','warnings':'VARCHAR','checked_at':'VARCHAR',
  'http_status':'BIGINT','final_url':'VARCHAR','redirects':'BIGINT','redirect_chain':'VARCHAR','https':'BOOLEAN',
  'tls_verified':'BOOLEAN','tls_protocol':'VARCHAR','tls_cipher':'VARCHAR','tls_expires':'VARCHAR',
  'elapsed_ms':'DOUBLE','attempts':'BIGINT','content_type':'VARCHAR','content_encoding':'VARCHAR',
@@ -28,7 +29,7 @@ SCHEMA={
  'animated':'BOOLEAN','complete_decode':'BOOLEAN','verified':'BOOLEAN','orientation':'BIGINT',
  'exif_present':'BOOLEAN','icc_bytes':'BIGINT','dpi':'VARCHAR','metadata':'VARCHAR'
 }
-SCHEMA.update(aspect_ratio='DOUBLE',average_rgb='VARCHAR',luminance_mean='DOUBLE',luminance_stddev='DOUBLE',
+SCHEMA.update(phash='VARCHAR',fingerprint_version='VARCHAR',retrieval_status='VARCHAR',safe_url='VARCHAR',fully_transparent='BOOLEAN',alpha_fraction='DOUBLE',retry_history='VARCHAR',decoder_version='VARCHAR',decoder_capabilities='VARCHAR',aspect_ratio='DOUBLE',average_rgb='VARCHAR',luminance_mean='DOUBLE',luminance_stddev='DOUBLE',
               entropy='DOUBLE',edge_mean='DOUBLE',uniform_image='BOOLEAN',dhash='VARCHAR')
 
 
@@ -111,7 +112,16 @@ def inspect_pixels(data,options,record,notes):
                 image.load();checked+=1
                 if frame==0:
                     from PIL import ImageStat, ImageFilter
-                    thumb=image.convert('RGB');thumb.thumbnail((256,256))
+                    from PIL import ImageOps
+                    from modules.image_checker.similarity import phash
+                    sample_image=image.copy();sample_image.thumbnail((256,256));sample_image=ImageOps.exif_transpose(sample_image)
+                    if record['has_alpha']:
+                        alpha=sample_image.convert('RGBA').getchannel('A')
+                        record.update(fully_transparent=image.convert('RGBA').getchannel('A').getextrema()[1]==0,alpha_fraction=round(ImageStat.Stat(alpha).mean[0]/255,5))
+                        if record['fully_transparent']:notes.append('Image is fully transparent; visible content is unavailable.')
+                    thumb=Image.new('RGB',sample_image.size,'white')
+                    if record['has_alpha']:thumb.paste(sample_image.convert('RGBA'),mask=sample_image.convert('RGBA').getchannel('A'))
+                    else:thumb.paste(sample_image.convert('RGB'))
                     gray=thumb.convert('L');stats=ImageStat.Stat(gray)
                     sample=gray.resize((9,8));values=list(sample.get_flattened_data() if hasattr(sample,'get_flattened_data') else sample.getdata())
                     bits=sum((values[y*9+x]>values[y*9+x+1])<<(y*8+x) for y in range(8) for x in range(8))
@@ -119,7 +129,7 @@ def inspect_pixels(data,options,record,notes):
                                   average_rgb=json.dumps([round(v,2) for v in ImageStat.Stat(thumb).mean]),
                                   luminance_mean=round(stats.mean[0],3),luminance_stddev=round(stats.stddev[0],3),
                                   entropy=round(gray.entropy(),4),edge_mean=round(ImageStat.Stat(gray.filter(ImageFilter.FIND_EDGES)).mean[0],3),
-                                  uniform_image=stats.stddev[0]<1,dhash=f'{bits:016x}')
+                                  uniform_image=stats.stddev[0]<1,dhash=f'{bits:016x}',phash=phash(thumb),fingerprint_version='oriented-white-v2')
                     if record['uniform_image']:notes.append('Image is nearly uniform; it may be a blank image or placeholder. This is a heuristic.')
             record.update(frames_checked=checked,complete_decode=checked==record['frames'])
             if not record['complete_decode']:notes.append('Some animation frames were not decoded; raise limits if needed.')
@@ -133,18 +143,23 @@ def inspect_pixels(data,options,record,notes):
     if record['extension_matches'] is False:notes.append('Filename extension differs from the decoded image type.')
 
 
-def check_url(url,options,cancelled,throttle=lambda host:None):
+def check_url(url,options,cancelled,throttle=lambda host:None,preview=False):
     started=time.monotonic();deadline=started+options['timeout']
     record={key:None for key in SCHEMA}
     record.update(url=url,check_status='fail',checked_at=dt.datetime.now(dt.timezone.utc).isoformat(),transfer_bytes=0,attempts=0,frames_checked=0,complete_decode=False,verified=False)
-    notes=[]
+    notes=[];history=[]
+    from PIL import Image, __version__
+    Image.init()
+    record.update(decoder_version=__version__,decoder_capabilities=json.dumps(sorted(set(FORMATS)&set(Image.OPEN))),safe_url=redact_url(url))
     if str(url)!=str(url).strip():notes.append('Leading or trailing whitespace was removed for the request.')
     def remaining():
         if cancelled.is_set():raise InterruptedError('Cancelled.')
         left=deadline-time.monotonic()
         if left<=0:raise TimeoutError('URL deadline exceeded.')
         return min(left,5)
+    base_record=dict(record)
     for attempt in range(options['retries']+1):
+        record=dict(base_record)
         chain=[];current=str(url).strip();record['attempts']=attempt+1
         try:
             remaining()
@@ -202,6 +217,13 @@ def check_url(url,options,cancelled,throttle=lambda host:None):
                     if record['length_matches'] is False:raise OSError('Body length differs from Content-Length.')
                     if not data:raise OSError('Empty response body.')
                     inspect_pixels(data,options,record,notes)
+                    if preview:
+                        import io, base64
+                        from PIL import ImageOps
+                        with Image.open(io.BytesIO(data),formats=FORMATS) as image:
+                            image=ImageOps.exif_transpose(image);image.thumbnail((256,256))
+                            output=io.BytesIO();image.convert('RGBA').save(output,format='PNG')
+                            record['thumbnail']='data:image/png;base64,'+base64.b64encode(output.getvalue()).decode('ascii')
                     remaining()
                     if not record['https']:notes.append('HTTP connection is not encrypted.')
                     record['check_status']='pass' if not notes and record['complete_decode'] else 'warning'
@@ -227,7 +249,11 @@ def check_url(url,options,cancelled,throttle=lambda host:None):
                 except (ValueError,TypeError,OverflowError):pass
             if delay>=deadline-time.monotonic():break
             if cancelled.wait(delay):raise InterruptedError('Cancelled.')
-        finally:record['redirect_chain']=json.dumps(chain)
+        finally:
+            record['redirect_chain']=json.dumps(chain)
+            history.append({'attempt':attempt+1,'status':record.get('http_status'),'error':record.get('error'),'elapsed_ms':round((time.monotonic()-started)*1000,2)})
     record['warnings']=json.dumps(list(dict.fromkeys(notes)))
+    record['warning_text']='; '.join(dict.fromkeys(notes))
     record['elapsed_ms']=round((time.monotonic()-started)*1000,2)
+    record.update(retrieval_status=classify(record),retry_history=json.dumps(history))
     return record

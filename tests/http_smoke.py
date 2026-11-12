@@ -1,5 +1,6 @@
 """End-to-end loopback API smoke check using the real portable runtime."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -23,7 +24,7 @@ def main():
             raise RuntimeError(process.stderr.read().decode())
         time.sleep(.1)
     session = json.loads(session_file.read_text())
-    (ROOT / 'workspace' / 'http-smoke-session.json').write_text(json.dumps({**session, 'workspace':str(WORKSPACE)}))
+    Path(os.environ.get('BEDAZZLE_TEST_SESSION',str(ROOT / 'workspace' / 'http-smoke-session.json'))).write_text(json.dumps({**session, 'workspace':str(WORKSPACE)}))
 
     def request(path, value=None, token=True):
         headers = {'X-Workbench-Token': session['token']} if token else {}

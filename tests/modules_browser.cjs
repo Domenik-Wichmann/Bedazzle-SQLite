@@ -1,7 +1,7 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');
 const {chromium}=require('../.test-tools/node_modules/playwright');
-const session=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json'));
+const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json'));
 const fixture=JSON.parse(fs.readFileSync('workspace/module-smoke-fixture.json'));
 (async()=>{
  const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:1440,height:960}}),errors=[];
@@ -11,15 +11,32 @@ const fixture=JSON.parse(fs.readFileSync('workspace/module-smoke-fixture.json'))
  try{
   await page.goto(session.url+'/#'+session.token);await page.locator('#module-menu option[value="image_checker"]').waitFor({state:'attached'});
   const base=fixture.url;
-  await query(`SELECT i AS id,'${base}/ok.png' AS image,CASE WHEN i%2=0 THEN '${base}/missing' ELSE '${base}/wrong.jpg' END AS thumbnail,CASE WHEN i=7 THEN 31 ELSE 32 END AS wanted FROM range(121) t(i) ORDER BY i;`);
+  await query(`SELECT i AS id,'${base}/ok.png?token=test_secret' AS image,CASE WHEN i%2=0 THEN '${base}/missing' ELSE '${base}/wrong.jpg' END AS thumbnail,CASE WHEN i=7 THEN 31 ELSE 32 END AS wanted FROM range(121) t(i) ORDER BY i;`);
   await page.locator('#module-menu').selectOption('image_checker');await page.locator('#module-option-url_columns').waitFor();
+  await page.screenshot({path:'workspace/verification/image-module-setup.png'});
+  await page.getByText('Compare against columns in your data (optional)',{exact:true}).click();await page.getByText('Image requirements (optional)',{exact:true}).click();
   await page.locator('#module-option-url_columns').selectOption(['image','thumbnail']);await page.locator('#module-option-expected_width').selectOption('wanted');
-  await page.locator('.module-limits summary').click();await page.locator('#module-option-allow_private').check();
+  await page.locator('#module-option-record_id').selectOption('id');
+  await page.locator('#module-option-min_width').fill('32');
+  await page.getByLabel('Profile name',{exact:true}).fill('Browser catalog');await page.getByRole('button',{name:'Save requirements',exact:true}).click();await idle();
+  assert.equal(await page.getByLabel('Requirement profile',{exact:true}).inputValue(),'Browser catalog');
+  await page.getByText('Limits and networking',{exact:true}).click();await page.locator('#module-option-allow_private').check();
   await page.locator('#module-start').click();await page.waitForFunction(()=>!moduleState.busy&&moduleState.run?.status==='completed',{},{timeout:60000});
   assert.equal(await page.locator('#module-report-preview tbody tr').count(),20);
   assert((await page.locator('#module-status').textContent()).includes('242 input URL cells'));
   assert((await page.locator('#module-status').textContent()).includes('3 unique URLs'));
   assert.equal((await page.locator('.module-stat.fail strong').textContent()).trim(),'63');
+  await page.getByRole('button',{name:'Load thumbnail',exact:true}).first().click();await idle();
+  assert((await page.locator('.module-thumbnail img').first().getAttribute('src')).startsWith('data:image/png;base64,'));
+  await page.locator('.module-stat.fail').click();await idle();assert.equal(await page.locator('#module-review-filter').inputValue(),'fail');
+  await page.locator('#module-review-filter').selectOption('requirements');await idle();assert.equal(await page.locator('#module-report-preview tbody tr').count(),2);
+  await page.getByRole('button',{name:'Rank affected URLs',exact:true}).click();await idle();assert((await page.locator('#module-report-preview').textContent()).includes('affected_records'));
+  await page.locator('#module-review-filter').selectOption('all');await idle();
+  await page.screenshot({path:'workspace/verification/image-module-review.png'});
+  const remediation=path.resolve(session.workspace,'remediation-'+Date.now()+'.csv');
+  await page.getByRole('button',{name:/^Export remediation/}).click();await page.locator('#export-format').selectOption('csv');await page.locator('#export-path').fill(remediation);await page.locator('#confirm-export').click();await idle();
+  const remediationText=fs.readFileSync(remediation,'utf8');assert(!remediationText.includes('test_secret'));assert(remediationText.includes('suggested_action'));assert(remediationText.includes('record_id'));
+  console.log('PASS: saved requirement profile, safe thumbnails, full-report filters, impact ranking and redacted remediation export');
   console.log('PASS: module chooser, multiple URL columns, row expectations, full 242-cell report and deduplication');
   const output=path.resolve(session.workspace,'browser-image-report-'+Date.now()+'.csv');
   await page.locator('#module-export-report').click();await page.locator('#export-format').selectOption('csv');await page.locator('#export-path').fill(output);await page.locator('#confirm-export').click();await idle();
@@ -30,15 +47,22 @@ const fixture=JSON.parse(fs.readFileSync('workspace/module-smoke-fixture.json'))
   await query(`SELECT count(*) AS n FROM "${merged}" WHERE "thumbnail__verdict"='fail';`);
   assert.equal((await page.locator('#result-table tbody tr td').nth(1).textContent()).trim(),'62');
   console.log('PASS: full report export, non-destructive enriched dataset and correct merged row identities');
-  await page.locator('#module-menu').selectOption('history');await page.locator('#module-history-list .module-run').first().getByRole('button').click();
+  await page.locator('#module-menu').selectOption('history');await page.locator('#module-history-list .module-run').first().getByRole('button').first().click();
   await page.locator('#module-outcome').waitFor();await idle();await page.locator('#module-dialog-close').click();
   await query(`SELECT '${base}/slow' AS image;`);
   await page.locator('#module-menu').selectOption('image_checker');await page.locator('#module-option-url_columns').waitFor();
-  await page.locator('.module-limits summary').click();await page.locator('#module-option-allow_private').check();await page.locator('#module-start').click();
+  await page.getByText('Limits and networking',{exact:true}).click();await page.locator('#module-option-allow_private').check();await page.locator('#module-start').click();
   await page.waitForFunction(()=>moduleState.busy&&moduleState.run?.id);
   await page.locator('#module-cancel').click();await page.waitForFunction(()=>!moduleState.busy,{},{timeout:15000});
   await page.locator('#module-resume').waitFor();await page.locator('#module-resume').click();await page.waitForFunction(()=>!moduleState.busy&&moduleState.run?.status==='completed',{},{timeout:30000});
+  const previousRun=await page.evaluate(()=>moduleState.run.id);
+  await page.locator('#module-report-preview input[type=checkbox]').first().check();await page.locator('#module-recheck-mode').selectOption('selected');
+  await page.getByRole('button',{name:'Start new recheck',exact:true}).click();await page.waitForFunction(old=>!moduleState.busy&&moduleState.run?.status==='completed'&&moduleState.run.id!==old,previousRun,{timeout:30000});
+  assert.equal(await page.evaluate(()=>moduleState.run.previous_run),previousRun);
   await page.screenshot({path:'workspace/verification/image-module.png'});
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'workspace/verification/image-module-mobile.png'});
+  assert(await page.locator('#module-dialog').evaluate(e=>e.getBoundingClientRect().width<=window.innerWidth));
+  console.log('PASS: targeted recheck creates a separate comparable run; mobile dialog stays within the viewport');
   console.log('PASS: workspace module history, cancel and resume through the UI');assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

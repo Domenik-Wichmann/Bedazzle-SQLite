@@ -1,25 +1,261 @@
 {
   "id": "image_checker",
   "name": "Image URL Checker",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Check the full result, reuse repeated URLs, and join a detailed image report back to the original rows.",
   "entrypoint": "runner.py",
   "fields": [
-    {"key":"url_columns","label":"Image URL columns","type":"columns","required":true,"help":"Select one or more columns. Every row of the query is included, not just the page on screen. Identical URL strings are checked once per run."},
-    {"key":"expected_width","label":"Expected width column","type":"column","help":"Optional pixel-width expectation from each input row."},
-    {"key":"expected_height","label":"Expected height column","type":"column","help":"Optional pixel-height expectation from each input row."},
-    {"key":"dimension_rule","label":"Dimension comparison","type":"select","choices":[["exact","Exact dimensions"],["minimum","At least the expected dimensions"]],"default":"exact"},
-    {"key":"expected_bytes","label":"Expected image size column (bytes)","type":"column","help":"Optional exact byte count of the image content, after HTTP content decoding."},
-    {"key":"expected_mime","label":"Expected MIME type column","type":"column","help":"Optional type such as image/jpeg. Compared against the detected image type."},
-    {"key":"min_width","label":"Minimum width, pixels","type":"number","default":0,"min":0,"max":100000,"help":"0 means no extra minimum. These limits apply in addition to mapped expectations."},
-    {"key":"min_height","label":"Minimum height, pixels","type":"number","default":0,"min":0,"max":100000},
-    {"key":"workers","label":"Concurrent URL checks","type":"number","default":2,"min":1,"max":4,"help":"Lower values use less RAM and are gentler on websites. Requests to the same host are spaced apart."},
-    {"key":"timeout","label":"Deadline per URL, seconds","type":"number","default":20,"min":3,"max":120},
-    {"key":"max_mb","label":"Maximum download per URL, MB","type":"number","default":10,"min":1,"max":50,"help":"Both transferred and decompressed content are bounded. Larger images are reported as limited, not passed."},
-    {"key":"max_pixels","label":"Maximum decoded megapixels","type":"number","default":16,"min":1,"max":32,"help":"Protects laptop RAM. Larger images are identified but not fully decoded."},
-    {"key":"max_frames","label":"Maximum animation frames to decode","type":"number","default":20,"min":1,"max":100,"help":"A second total-pixel budget bounds animation work. Unchecked frames are reported as partial."},
-    {"key":"retries","label":"Retries for temporary errors","type":"number","default":1,"min":0,"max":2},
-    {"key":"run_timeout","label":"Whole run limit, seconds","type":"number","default":0,"min":0,"max":86400,"help":"0 means until finished or cancelled. Completed URLs are saved for Resume."},
-    {"key":"allow_private","label":"Allow private-network URLs","type":"boolean","default":false,"help":"Off blocks loopback, LAN, link-local and other non-public addresses at every redirect. Turn on only for image servers you intend to access on your network."}
+    {
+      "key": "url_columns",
+      "label": "Image URL columns",
+      "type": "columns",
+      "required": true,
+      "help": "Select one or more columns. Every row of the query is included, not just the page on screen. Identical URL strings are checked once per run."
+    },
+    {
+      "key": "record_id",
+      "label": "Product or record ID column",
+      "type": "column",
+      "help": "Included in remediation exports; generated row identities still protect merges."
+    },
+    {
+      "key": "allowed_formats",
+      "label": "Allowed formats",
+      "type": "text",
+      "default": "",
+      "max_length": 100,
+      "help": "Comma-separated, for example JPEG, PNG, WEBP. Blank allows any supported format."
+    },
+    {
+      "key": "max_image_kb",
+      "label": "Maximum image size, KB",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 51200,
+      "help": "A business requirement, separate from the download safety limit. 0 disables it."
+    },
+    {
+      "key": "min_aspect_percent",
+      "label": "Minimum aspect ratio (width / height)",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 10000,
+      "help": "1 means square. Use 0.95 to 1.05 for nearly square images. 0 disables."
+    },
+    {
+      "key": "max_aspect_percent",
+      "label": "Maximum aspect ratio (width / height)",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 10000
+    },
+    {
+      "key": "transparency",
+      "label": "Transparency channel",
+      "type": "select",
+      "default": "any",
+      "choices": [
+        [
+          "any",
+          "Any"
+        ],
+        [
+          "required",
+          "Required"
+        ],
+        [
+          "forbidden",
+          "Forbidden"
+        ]
+      ]
+    },
+    {
+      "key": "placeholder_hashes",
+      "label": "Known placeholder SHA-256 hashes",
+      "type": "text",
+      "default": "",
+      "max_length": 10000,
+      "help": "Space-separated hashes from confirmed placeholder report rows. Exact matches fail requirements."
+    },
+    {
+      "key": "shared_threshold",
+      "label": "Shared-image review threshold, records",
+      "type": "number",
+      "default": 10,
+      "min": 2,
+      "max": 1000000,
+      "help": "Flag identical content affecting this many records for review; shared images can be legitimate."
+    },
+    {
+      "key": "expected_width",
+      "label": "Expected width column",
+      "type": "column",
+      "help": "Optional pixel-width expectation from each input row."
+    },
+    {
+      "key": "expected_height",
+      "label": "Expected height column",
+      "type": "column",
+      "help": "Optional pixel-height expectation from each input row."
+    },
+    {
+      "key": "dimension_rule",
+      "label": "Dimension comparison",
+      "type": "select",
+      "choices": [
+        [
+          "exact",
+          "Exact dimensions"
+        ],
+        [
+          "minimum",
+          "At least the expected dimensions"
+        ]
+      ],
+      "default": "exact"
+    },
+    {
+      "key": "expected_bytes",
+      "label": "Expected image size column (bytes)",
+      "type": "column",
+      "help": "Optional exact byte count of the image content, after HTTP content decoding."
+    },
+    {
+      "key": "expected_mime",
+      "label": "Expected MIME type column",
+      "type": "column",
+      "help": "Optional type such as image/jpeg. Compared against the detected image type."
+    },
+    {
+      "key": "min_width",
+      "label": "Minimum width, pixels",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 100000,
+      "help": "0 means no extra minimum. These limits apply in addition to mapped expectations."
+    },
+    {
+      "key": "min_height",
+      "label": "Minimum height, pixels",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 100000
+    },
+    {
+      "key": "workers",
+      "label": "Concurrent URL checks",
+      "type": "number",
+      "default": 2,
+      "min": 1,
+      "max": 4,
+      "help": "Lower values use less RAM and are gentler on websites. Requests to the same host are spaced apart."
+    },
+    {
+      "key": "timeout",
+      "label": "Deadline per URL, seconds",
+      "type": "number",
+      "default": 20,
+      "min": 3,
+      "max": 120
+    },
+    {
+      "key": "max_mb",
+      "label": "Maximum download per URL, MB",
+      "type": "number",
+      "default": 10,
+      "min": 1,
+      "max": 50,
+      "help": "Both transferred and decompressed content are bounded. Larger images are reported as limited, not passed."
+    },
+    {
+      "key": "max_pixels",
+      "label": "Maximum decoded megapixels",
+      "type": "number",
+      "default": 16,
+      "min": 1,
+      "max": 32,
+      "help": "Protects laptop RAM. Larger images are identified but not fully decoded."
+    },
+    {
+      "key": "max_frames",
+      "label": "Maximum animation frames to decode",
+      "type": "number",
+      "default": 20,
+      "min": 1,
+      "max": 100,
+      "help": "A second total-pixel budget bounds animation work. Unchecked frames are reported as partial."
+    },
+    {
+      "key": "retries",
+      "label": "Retries for temporary errors",
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "key": "run_timeout",
+      "label": "Whole run limit, seconds",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 86400,
+      "help": "0 means until finished or cancelled. Completed URLs are saved for Resume."
+    },
+    {
+      "key": "allow_private",
+      "label": "Allow private-network URLs",
+      "type": "boolean",
+      "default": false,
+      "help": "Off blocks loopback, LAN, link-local and other non-public addresses at every redirect. Turn on only for image servers you intend to access on your network."
+    },
+    {
+      "key": "similarity_enabled",
+      "label": "Find visually similar images",
+      "type": "boolean",
+      "default": true,
+      "help": "Compare distinct image contents locally. Similarity is a review signal and does not change pass/fail verdicts."
+    },
+    {
+      "key": "similarity_sensitivity",
+      "label": "Visual matching sensitivity",
+      "type": "select",
+      "default": "balanced",
+      "choices": [
+        [
+          "strict",
+          "Strict - closest matches"
+        ],
+        [
+          "balanced",
+          "Balanced"
+        ],
+        [
+          "broad",
+          "Broad - more candidates and false matches"
+        ]
+      ]
+    },
+    {
+      "key": "similarity_color_variants",
+      "label": "Include color variants",
+      "type": "boolean",
+      "default": false,
+      "help": "Include images with similar structure but different average colors."
+    },
+    {
+      "key": "similarity_seconds",
+      "label": "Maximum similarity search time, seconds",
+      "type": "number",
+      "default": 30,
+      "min": 5,
+      "max": 300,
+      "help": "Other bounded comparison and pair limits also apply. Incomplete searches are identified explicitly."
+    }
   ]
 }

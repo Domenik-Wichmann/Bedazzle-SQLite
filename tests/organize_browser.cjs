@@ -1,6 +1,6 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');const{chromium}=require('../.test-tools/node_modules/playwright');
-const s=JSON.parse(fs.readFileSync('workspace/http-smoke-session.json'));
+const s=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json'));
 (async()=>{const browser=await chromium.launch(),p=await browser.newPage({viewport:{width:1366,height:850}}),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
  const idle=async()=>{await p.waitForFunction(()=>!state.busy);await p.waitForTimeout(150);};
  const home=async()=>{await p.locator('#workspace-nav').click();await p.locator('#workspace-home').waitFor();};

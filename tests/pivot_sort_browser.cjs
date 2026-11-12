@@ -1,0 +1,40 @@
+const fs=require('fs'),path=require('path'),assert=require('assert/strict');
+process.env.PLAYWRIGHT_BROWSERS_PATH=path.resolve('.test-tools/browsers');
+const {chromium}=require('../.test-tools/node_modules/playwright');
+const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace/http-smoke-session.json'));
+(async()=>{const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce',colorScheme:'dark'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+async function idle(){await page.waitForFunction(()=>!state.busy);}
+async function check(){await page.getByRole('button',{name:'Check connection',exact:true}).click();await idle();await page.waitForFunction(()=>document.querySelector('#pivot-relationship-result').textContent.includes('Full check'));}
+async function keys(target){await page.getByRole('combobox',{name:'Dataset to connect',exact:true}).selectOption(target);await page.getByRole('combobox',{name:'Main matching field 1',exact:true}).selectOption('product');await page.getByRole('combobox',{name:'Related matching field 1',exact:true}).selectOption('product');}
+async function contrast(){return page.locator('#pivot-relationship-result').evaluate(el=>{
+ const rgb=s=>(s.match(/[\d.]+/g)||[]).map(Number);const lum=rgb=>rgb.slice(0,3).map(c=>c/255).map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4).reduce((n,c,i)=>n+c*[.2126,.7152,.0722][i],0);
+ function ratio(item){let parent=item,bg;while(parent){bg=rgb(getComputedStyle(parent).backgroundColor);if(bg.length===3||bg[3]>0)break;parent=parent.parentElement;}const a=lum(rgb(getComputedStyle(item).color)),b=lum(bg);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);}
+ return {ratio:Math.min(...[el,...el.querySelectorAll('p,strong')].map(ratio)),background:getComputedStyle(el).backgroundColor};
+});}
+async function run(){await page.locator('#run-query').click();await idle();await page.waitForFunction(()=>document.querySelector('#pivot-status').textContent==='Up to date');}
+async function products(){return page.evaluate(()=>state.result.rows.filter(r=>r[0]==='A'&&r[2]==='Detail').map(r=>r[1]));}
+try{
+ await page.goto(session.url+'/#'+session.token);await page.waitForFunction(()=>state.data&&!state.busy&&document.querySelector('.query-tab'));
+ await page.evaluate(async()=>{await runSQL(`CREATE OR REPLACE TABLE sort_items AS SELECT * FROM (VALUES ('A','Alpha',10,'10'),('A','Beta',20,'20'),('A','Zulu',20,'20'),('A','Zulu',2,'2'),('A','No price',NULL,'invalid'),('A',NULL,1,'1'),('B','Other',200,'200')) t(kind,product,price,price_text);CREATE OR REPLACE TABLE sort_lookup AS SELECT * FROM (VALUES ('Alpha'),('Beta'),('Zulu'),('Other'),('Lookup-only')) t(product);CREATE OR REPLACE TABLE sort_duplicate AS SELECT * FROM (VALUES ('Alpha'),('Alpha')) t(product);`);await refresh();workArea();});
+ await page.locator('#pivot-mode').click();await page.locator('#pivot-dataset').selectOption('sort_items');await page.locator('#pivot-live').uncheck();
+ await page.getByRole('button',{name:'Add dataset',exact:true}).click();await keys('sort_duplicate');await check();assert((await contrast()).ratio>=4.5);await page.screenshot({path:path.join(session.workspace,'pivot-dark-warning.png')});
+ await keys('sort_lookup');await check();assert((await contrast()).ratio>=4.5);assert.match(await page.locator('.pivot-join-explanation').textContent(),/Keeps every sort_items record/);assert.match(await page.locator('.pivot-join-coverage').textContent(),/all 7 main records/);
+ assert.match(await page.getByRole('combobox',{name:'Records to keep',exact:true}).locator('option:checked').textContent(),/Left join/);
+ await page.getByRole('combobox',{name:'Records to keep',exact:true}).selectOption('inner');assert.match(await page.locator('.pivot-join-explanation').textContent(),/Unmatched records from either side are excluded/);assert.match(await page.locator('.pivot-join-coverage').textContent(),/keeps 5 main records/);
+ await page.getByRole('combobox',{name:'Records to keep',exact:true}).selectOption('left');await page.screenshot({path:path.join(session.workspace,'pivot-dark-connection.png')});
+ await page.evaluate(()=>document.getElementById('theme-toggle').click());assert.equal(await page.locator('html').getAttribute('data-theme'),'light');assert((await contrast()).ratio>=4.5);await page.screenshot({path:path.join(session.workspace,'pivot-light-connection.png')});await page.evaluate(()=>document.getElementById('theme-toggle').click());
+ await page.locator('#pivot-connect-apply').click();
+ for(const name of ['kind','product','price'])await page.locator(`.pivot-field[data-source="sort_items"][data-field="${name}"]`).click();
+ await page.locator('#pivot-sorts>summary').click();await page.getByRole('button',{name:'Add sort rule',exact:true}).click();await page.getByRole('button',{name:'Add sort rule',exact:true}).click();
+ await page.getByRole('combobox',{name:'Sort by 2',exact:true}).selectOption('field:price');await page.getByRole('combobox',{name:'Direction for sort 2',exact:true}).selectOption('desc');await page.getByRole('button',{name:'Add sort rule',exact:true}).click();await page.getByRole('combobox',{name:'Direction for sort 3',exact:true}).selectOption('desc');
+ await run();assert.deepEqual(await products(),['Zulu','Beta','Alpha',null,'No price']);assert.equal(await page.evaluate(()=>state.result.rows[0][2]),'Subtotal · 1');assert.equal(await page.evaluate(()=>state.result.rows.at(-1)[3]),253);
+ await page.getByRole('button',{name:'Move sort 3 earlier',exact:true}).click();await run();assert.deepEqual(await products(),['Zulu','No price','Beta','Alpha',null]);await page.getByRole('button',{name:'Undo pivot change',exact:true}).click();await run();assert.deepEqual(await products(),['Zulu','Beta','Alpha',null,'No price']);
+ await page.getByRole('combobox',{name:'Sort by 2',exact:true}).selectOption('field:price_text');await page.getByRole('checkbox',{name:'Compare sort 2 as numbers',exact:true}).check();await run();assert.deepEqual(await products(),['Zulu','Beta','Alpha',null,'No price']);
+ await page.getByRole('button',{name:'Save layout',exact:true}).click();await page.locator('#pivot-save-name').fill('Type price name');await page.locator('#detail-content').getByRole('button',{name:'Save layout',exact:true}).click();
+ await page.reload();await page.waitForFunction(()=>state.data&&!state.busy&&document.querySelector('.query-tab'));await page.evaluate(()=>workArea());await page.locator('#pivot-mode').click();assert.equal(await page.locator('.pivot-sort-rule').count(),3);await run();assert.deepEqual(await products(),['Zulu','Beta','Alpha',null,'No price']);
+ await page.locator('#pivot-pane').evaluate(el=>el.scrollTop=0);await page.screenshot({path:path.join(session.workspace,'pivot-dark-sorts.png')});
+ await page.locator('#result-table thead button').filter({hasText:/^product/}).click();await idle();assert.deepEqual(await products(),['Alpha','Beta','No price','Zulu',null]);assert.equal(await page.evaluate(()=>state.result.rows[0][2]),'Subtotal · 1');
+ await page.locator('#result-table thead button').filter({hasText:/^Sum of price/}).click();await idle();assert.equal((await products())[0],null);assert.equal(await page.evaluate(()=>state.sort),null);
+ await page.setViewportSize({width:760,height:850});await page.screenshot({path:path.join(session.workspace,'pivot-sorts-narrow.png')});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ assert.deepEqual(errors,[]);console.log('PASS: dark/light connection contrast, checked/warning panels, explicit left/inner coverage, tiered label/value sorts, reorder/undo, numeric text, saved layouts, hierarchy-safe header sorting and narrow layout');console.log('Screenshots: '+session.workspace);
+}catch(e){console.error(await page.locator('#pivot-status').textContent().catch(()=>''));console.error(errors);await page.screenshot({path:'workspace/pivot-sort-failure.png'});throw e;}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

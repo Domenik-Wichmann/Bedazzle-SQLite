@@ -150,10 +150,10 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT count(*) FROM temp_rows').fetchone()[0],156)
 
     def test_trailing_comments_and_quoted_semicolons_survive_paging_count_sort_export(self):
-        sql="SELECT i, '; -- literal' AS text FROM range(156) t(i); /* nested /* note */ end */ -- trailing note"
+        sql="SELECT i, 'Привіт · ; -- literal' AS text FROM range(156) t(i); /* nested /* note */ end */ -- trailing note"
         result=self.perform('query',{'sql':sql})
         self.assertEqual(result['total_rows'],156)
-        self.assertEqual(result['rows'][0][1],'; -- literal')
+        self.assertEqual(result['rows'][0][1],'Привіт · ; -- literal')
         sorted_result=self.perform('query',{'sql':sql,'sort':{'column':'i','direction':'DESC'}})
         self.assertEqual(sorted_result['rows'][0][0],155)
         target=self.root/'comments.parquet'

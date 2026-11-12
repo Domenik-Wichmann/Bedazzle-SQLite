@@ -58,6 +58,7 @@ class ModuleTests(unittest.TestCase):
         sql=f'SELECT i%3 AS original_key,{literal(url)} AS url,{literal(other)} AS "other image",CASE WHEN i=2 THEN 99 ELSE 32 END AS wanted_width FROM range(121) t(i)'
         options=validate_options(self.manifest,{'url_columns':['url','other image'],'expected_width':'wanted_width','allow_private':True,'retries':0},['original_key','url','other image','wanted_width'])
         result=self.job(sql,options);record=result['run'];report=identifier(result['name'])
+        self.assertEqual(self.conn.execute(f'SELECT min(url_affected_records) FROM {report}').fetchone()[0],121)
         self.assertEqual(record['summary']['checked_cells'],242);self.assertEqual(record['summary']['unique_urls'],2)
         self.assertEqual(self.images.hits['/merge.png']-before,1)
         self.assertEqual(self.conn.execute(f'SELECT count(*) FROM {report} WHERE verdict=\'fail\'').fetchone()[0],2)
@@ -117,3 +118,107 @@ def run(ctx,options):
         path.with_name('bad.parquet').replace(path)
         with self.assertRaisesRegex(ValueError,'repeated merge keys'):
             perform(self.conn,'module_merge',{'run_id':result['run']['id']},uuid.uuid4().hex,module_context=self.env)
+
+    def manage(self,**payload):
+        return perform(self.conn,'module_manage',payload,uuid.uuid4().hex,module_context=self.env)
+
+    def test_professional_classification_transparency_evidence_and_redaction(self):
+        from modules.image_checker.quality import redact_url
+        for path,status in [('/denied','access_denied'),('/rate','rate_limited'),('/server','server_error'),('/missing','missing'),('/html','invalid_image')]:
+            self.assertEqual(self.check(path)['retrieval_status'],status)
+        image=self.check('/transparent');self.assertTrue(image['fully_transparent']);self.assertEqual(image['alpha_fraction'],0)
+        self.assertEqual(image['check_status'],'warning');self.assertTrue(self.check('/blank')['uniform_image'])
+        self.assertTrue(image['decoder_version']);self.assertIn('PNG',json.loads(image['decoder_capabilities']))
+        self.assertEqual(len(json.loads(image['retry_history'])),1)
+        self.assertEqual(redact_url('https://user:pass@example.com/x.png?secret=abc#token'),'https://example.com/x.png')
+
+    def test_requirements_profiles_impact_and_known_placeholders(self):
+        import hashlib
+        values={'url_columns':['url'],'record_id':'sku','allow_private':True,'retries':0,'min_width':40,
+                'allowed_formats':'JPEG','max_aspect_percent':100,'transparency':'required',
+                'placeholder_hashes':hashlib.sha256(self.images.png).hexdigest(),'shared_threshold':2}
+        options=validate_options(self.manifest,values,['url','sku'])
+        result=self.job(f'SELECT i AS sku,{literal(self.url("/ok.png"))} AS url FROM range(3) t(i)',options)
+        row=self.conn.execute('SELECT record_id,issue,requirements_status,coverage,content_affected_records,shared_image_review FROM '+identifier(result['name'])+' ORDER BY row_id').fetchone()
+        self.assertEqual(row[0],'0');self.assertIn('Minimum width: 40',row[1]);self.assertIn('known placeholder',row[1]);self.assertIn('Format must',row[1]);self.assertIn('Aspect ratio',row[1]);self.assertEqual(row[2:],('fail','full',3,True))
+        saved=self.manage(operation='save_profile',name='Catalog',options={k:v for k,v in values.items() if k not in ('record_id','url_columns')})
+        self.assertEqual(saved['profiles']['Catalog']['min_width'],40)
+        self.assertNotIn('allow_private',saved['profiles']['Catalog'])
+        self.assertNotIn('record_id',saved['profiles']['Catalog'])
+        self.assertEqual(self.manage(operation='delete_profile',name='Catalog')['profiles'],{})
+        with self.assertRaisesRegex(ValueError,'SHA-256'):
+            self.job("SELECT 'https://example.com/image' AS url",{**self.options,'placeholder_hashes':'invalid'})
+
+    def test_targeted_rechecks_compare_and_preserve_original_report(self):
+        result=self.job(f'SELECT * FROM (VALUES ({literal(self.url("/ok.png"))}),({literal(self.url("/missing"))})) t(url)')
+        original=result['run'];before=self.images.hits.get('/ok.png',0)
+        retry=perform(self.conn,'module_run',{'run_id':original['id'],'recheck':'failures'},uuid.uuid4().hex,module_context=self.env)
+        self.assertEqual(self.images.hits.get('/ok.png',0),before)
+        self.assertNotEqual(retry['run']['id'],original['id']);self.assertEqual(read_run(self.root,original['id'])['status'],'completed')
+        statuses=dict(self.conn.execute('SELECT retrieval_status,change_status FROM '+identifier(retry['name'])).fetchall())
+        self.assertEqual(statuses['retrieved'],'reused');self.assertEqual(statuses['missing'],'unchanged')
+        record_id=self.conn.execute('SELECT row_id FROM '+identifier(result['name'])+" WHERE retrieval_status='retrieved'").fetchone()[0]
+        selected=perform(self.conn,'module_run',{'run_id':original['id'],'recheck':'selected','selected':[{'row_id':record_id,'url_column':'url'}]},uuid.uuid4().hex,module_context=self.env)
+        self.assertEqual(self.images.hits.get('/ok.png',0),before+1)
+        self.assertEqual(selected['run']['summary']['checked_cells'],2)
+        before=self.images.hits.get('/ok.png',0)
+        perform(self.conn,'module_run',{'run_id':original['id'],'recheck':'stale','days':7},uuid.uuid4().hex,module_context=self.env)
+        self.assertEqual(self.images.hits.get('/ok.png',0),before)
+
+    def test_safe_preview_and_retained_input_release_guards(self):
+        result=self.job('SELECT '+literal(self.url('/ok.png'))+' AS url');key=result['run']['id']
+        preview=self.manage(operation='preview',run_id=key,row_id=1,url_column='url')
+        self.assertTrue(preview['thumbnail'].startswith('data:image/png;base64,'))
+        perform(self.conn,'module_merge',{'run_id':key},uuid.uuid4().hex,module_context=self.env)
+        with self.assertRaisesRegex(ValueError,'merged dataset'):self.manage(operation='release_input',run_id=key)
+        merged=read_run(self.root,key)['merged_dataset']
+        perform(self.conn,'remove_dataset',{'name':merged},uuid.uuid4().hex,module_context=self.env)
+        self.manage(operation='release_input',run_id=key)
+        self.assertTrue(read_run(self.root,key)['input_released'])
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM '+identifier(result['name'])).fetchone()[0],1)
+        with self.assertRaisesRegex(ValueError,'released'):
+            perform(self.conn,'module_run',{'run_id':key,'recheck':'all'},uuid.uuid4().hex,module_context=self.env)
+
+    def test_size_requirement_changed_content_and_delete_guards(self):
+        import sqlite3
+        from module_runtime import run_path
+        large=self.job('SELECT '+literal(self.url('/noise'))+' AS url',{**self.options,'max_image_kb':1})
+        row=self.conn.execute('SELECT verdict,coverage,requirements_status,issue FROM '+identifier(large['name'])).fetchone()
+        self.assertEqual(row[:3],('fail','full','fail'));self.assertIn('1 KB',row[3])
+        original=self.job('SELECT '+literal(self.url('/change'))+' AS url')
+        saved_png=self.images.png
+        try:
+            self.images.png=self.images.blank
+            changed=perform(self.conn,'module_run',{'run_id':original['run']['id'],'recheck':'all'},uuid.uuid4().hex,module_context=self.env)
+            self.assertEqual(self.conn.execute('SELECT change_status FROM '+identifier(changed['name'])).fetchone()[0],'content_changed')
+        finally:self.images.png=saved_png
+        with sqlite3.connect(run_path(self.root,original['run']['id'])/'checks.sqlite3') as db:
+            db.execute("UPDATE urls SET result=json_set(result,'$.checked_at','2000-01-01T00:00:00+00:00')")
+        db.close()
+        before=self.images.hits['/change']
+        perform(self.conn,'module_run',{'run_id':original['run']['id'],'recheck':'stale','days':7},uuid.uuid4().hex,module_context=self.env)
+        self.assertEqual(self.images.hits['/change'],before+1)
+        with self.assertRaisesRegex(ValueError,'sidebar'):self.manage(operation='delete_run',run_id=large['run']['id'])
+        perform(self.conn,'remove_dataset',{'name':large['name']},uuid.uuid4().hex,module_context=self.env)
+        self.manage(operation='delete_run',run_id=large['run']['id'])
+        self.assertFalse(run_path(self.root,large['run']['id']).exists())
+        malformed=self.job("SELECT 'http://[' AS url")
+        self.assertEqual(malformed['run']['summary']['fail'],1)
+
+    def test_interrupted_recheck_preparation_preserves_scope_on_resume(self):
+        original=self.job(f'SELECT * FROM (VALUES ({literal(self.url("/ok.png"))}),({literal(self.url("/missing"))})) t(url)')
+        cell=self.conn.execute('SELECT row_id,url_column FROM '+identifier(original['name'])+" WHERE retrieval_status='retrieved'").fetchone()
+        key=uuid.uuid4().hex
+        def interrupt(activity):
+            if activity['label']=='Preparing recheck':raise RuntimeError('interrupted copy')
+        payload={'run_id':original['run']['id'],'recheck':'selected','selected':[{'row_id':cell[0],'url_column':cell[1]}]}
+        with patch.dict(self.env,{'emit':interrupt}):
+            with self.assertRaisesRegex(RuntimeError,'interrupted copy'):
+                perform(self.conn,'module_run',payload,key,module_context=self.env)
+        self.assertEqual(read_run(self.root,key)['status'],'failed')
+        with self.assertRaisesRegex(ValueError,'unfinished recheck'):
+            self.manage(operation='release_input',run_id=original['run']['id'])
+        good=self.images.hits.get('/ok.png',0);missing=self.images.hits.get('/missing',0)
+        perform(self.conn,'module_run',{'run_id':key},uuid.uuid4().hex,module_context=self.env)
+        self.assertEqual(self.images.hits.get('/ok.png',0),good+1)
+        self.assertEqual(self.images.hits.get('/missing',0),missing)

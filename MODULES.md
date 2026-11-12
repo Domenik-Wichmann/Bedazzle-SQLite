@@ -32,6 +32,131 @@ Private/loopback/link-local/non-public destinations are blocked by default, incl
 
 Reports and snapshots live in the selected workspace at `modules/runs/<id>/`. The queue is SQLite-backed and report construction is native DuckDB; input rows, URLs and full report results are never collected into one giant Python list. Disk usage grows with input/report size. No image cache is retained: downloaded image bytes are discarded after inspection. Large runs can still take hours/days or hit website rate limits; no fixed throughput is promised.
 
+## Image checker 2.0 review workflow
+
+Choose URL columns and, optionally, a product/record ID. Requirement profiles are
+saved per workspace and include image rules, never URL-column mappings or private
+network permission. Expand **Image requirements** for allowed formats, maximum
+image KB, minimum dimensions, aspect-ratio bounds, transparency-channel rules,
+known placeholder SHA-256 hashes and the shared-content review threshold. Aspect
+ratios in the UI are width divided by height: 1 is square and 1.78 is approximately
+16:9. Zero disables numeric requirements. Download limits remain separate safety
+limits; an image can be within download limits and still exceed its size requirement.
+
+The report separates `retrieval_status`, `coverage` and `requirements_status`.
+Access denial (401/403), rate limiting (429), server errors, missing images
+(404/410), invalid images, policy blocks and incomplete decoding remain distinct.
+Requirements are unassessed when decoding is incomplete. `issue` explains a
+finding and `suggested_action` gives a next step. Coverage counts refer to input
+URL cells, not unique URLs. A successful run can contain incomplete checks.
+
+Click verdict totals or use the review filter to inspect the full report in
+20-cell pages. **Rank affected URLs** counts distinct frozen source rows and URL
+cells, rather than assuming each URL affects one product. Source-row identities
+are distinct even when business IDs repeat. Shared-image counts and difference-hash
+groups are review signals, not automatic proof of a placeholder or identity.
+Version 2.1 adds indexed near-hash matching across different file hashes, described
+below. Version 2.0 saved reports retain their earlier identical-difference-hash
+filter. Uniform images are excluded from visual matching to reduce false matches.
+Confirmed placeholder SHA-256 matches fail requirements. Fully transparent images
+receive an explicit warning; visible-pixel statistics composite transparency onto white.
+
+Thumbnails are fetched only when requested, through the same bounded checker and
+network policy, without browser cookies or browser navigation to the remote URL.
+They are returned as a small PNG and are not saved as an image cache. A thumbnail
+is a new observation and may differ from the saved report.
+
+**Export remediation** exports the current filter across all matching rows,
+including IDs, findings, actual/expected values, affected-record counts, next
+steps, timestamps and decoder details. Its default URL removes userinfo, query
+parameters and fragments. Paths are retained and can themselves contain sensitive
+data. Including full URLs is opt-in. **Export report** includes every field and
+can contain signed URLs, redirect chains and tokens. Original-data exports retain
+their original values. This is export redaction, not encryption of stored reports.
+
+Rechecks create a separate run from the frozen input. Choose failed/blocked/limited
+findings, selected cells (up to 100), observations older than an age in days, or
+all URLs. Selecting a cell rechecks its exact URL for every linked row. Saved
+results outside the selected scope are reused. Changes distinguish reused checks,
+recovered/newly unavailable images, different content, different retrieval results
+and changed verdicts. Resume still continues interrupted work with its original
+settings. Older reports remain viewable; interrupted runs from older module
+versions require a new run after this upgrade.
+
+Each observation records Pillow version, available allowed decoders, retry history
+and timestamp; the run records the checker version and options. Requests are
+bounded globally and serialized per host using a fixed-size scheduling structure.
+Rate-limited/unavailable hosts get a cooldown in addition to bounded retries.
+Remaining-time estimates are approximate and change with server behavior.
+Impact calculations aggregate narrow keys in DuckDB before joining the wide
+report; smaller report row groups reduce memory pressure on constrained laptops.
+
+Retention is explicit and manual: files remain in the workspace until released or
+deleted. **Coverage, evidence and retained data → Release retained input** removes
+the original snapshot, URL queue and intermediate check files. The report remains;
+merge and recheck become unavailable. Release is blocked while merged views use
+the input, including renamed views. To delete an entire saved run, first remove
+its report and merged datasets from the sidebar, then use **Previous module runs →
+Delete saved files**. Deletion checks direct view dependencies and only removes
+known files in the selected run folder; it does not recursively delete directories.
+
+## Visual similarity in Image Checker 2.1
+
+New checks calculate an orientation-corrected perceptual DCT hash and difference
+hash from the first frame, composited on white. Matching compares Hamming distances,
+aspect ratios and average colors. It can find resized, recompressed and modestly
+adjusted copies even when fingerprints differ. It does not recognize product identity,
+and heavy crops, arbitrary rotations, alternate camera angles or large edits can
+be missed. Blank, fully transparent, low-detail and incompletely decoded images
+are excluded; the per-cell `similarity_search_status` explains skipped work.
+
+Expand **Visual similarity** before checking to disable matching, choose Strict,
+Balanced or Broad sensitivity, include color variants or change the search-time
+budget (30 seconds by default). Balanced accepts at most 6 perceptual-hash and
+10 difference-hash bit differences, a 15% aspect-ratio difference and an average
+RGB channel difference of 55/255. Strict uses 4/6 bits, 8% and 35/255; Broad uses
+8/14 bits, 25% and 75/255. Including color variants disables the average-color gate.
+These are practical candidate thresholds, not guarantees of identity or quality.
+
+**Review similar pairs** shows distinct-content pairs, their scores, dimensions,
+formats, file sizes, original validation findings, record IDs and affected-record
+counts. A row's **Compare matches** focuses on that image's pairs. Fingerprint
+agreement is a weighted bit-agreement score (65% perceptual, 35% difference hash),
+not a probability. Use **Load both previews** for side-by-side images. Previews
+follow the same explicit, bounded server-fetch policy as normal report thumbnails.
+They are fetched now and may differ from the original observation.
+
+Mark a pair **Likely duplicate** or **Different images**, optionally add a note,
+and save it. Decisions are stored locally by the pair of exact content hashes and
+survive rebuilt indexes, URL changes and new runs in the same workspace. They do
+not change source records, delete images or alter validation verdicts. Pair lists
+can be filtered by review status. **Export pairs** includes both record identities,
+URLs, similarity evidence and review decisions, following the current status and
+focused-image filter. URLs are redacted unless the full-URL export switch is on.
+
+**Adjust matching → Rebuild matches** uses saved fingerprints without downloading
+images. It also works after retained input has been released. **Recheck these
+images** creates a targeted URL recheck when the original snapshot is retained.
+Older reports need a new full check to generate the additional fingerprints.
+
+The matcher indexes distinct byte contents in a disk-backed SQLite band index;
+it does not collect all URLs/images into one Python list or scan every pair.
+Default hard bounds are 2,000 candidate comparisons per content, 2,000,000 total
+comparisons and 100,000 retained pairs, plus the chosen search-time limit.
+Cancellation is checked during indexing and matching. A limited search reports
+limited/unsearched contents prominently. Missing candidates never prove uniqueness.
+Completeness means coverage within the configured fingerprint/shape/color rules,
+not completeness of human visual similarity. The first eligible node has no earlier
+neighbors; per-node status describes its indexed search, while global status also
+accounts for later truncated searches. An interrupted rebuild is explicitly marked
+until another rebuild synchronizes the report counts.
+
+The index and pair-export intermediates live in the run folder. The index retains
+original URLs and fingerprints, with the same sensitivity as the full report. Review decisions
+and notes live in `modules/similarity_reviews.sqlite3` in the workspace; they contain
+content hashes and user notes, not downloaded images. Deleting a run removes its
+index but retains these reusable decisions. File retention remains manual.
+
 ## Add another module
 
 Create `modules/my_module/manifest.json` and `modules/my_module/runner.py`, then restart Bedazzle. The module appears automatically; no results-header or server route changes are needed. To include it in a distributable, add its source filenames to `project_files.py`'s allowlist. Do not include run folders, data, credentials or caches.

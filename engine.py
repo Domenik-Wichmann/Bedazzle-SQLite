@@ -26,14 +26,16 @@ def query_body(sql):
     """Strip terminators using DuckDB's lexer, preserving quoted semicolons."""
     import duckdb
     tokens=[(offset,kind) for offset,kind in duckdb.tokenize(sql) if str(kind).split('.')[-1]!='comment']
-    end=len(sql)
+    # DuckDB token positions are UTF-8 byte offsets, not Python string indexes.
+    encoded=sql.encode('utf-8')
+    end=len(encoded)
     for offset,_ in reversed(tokens):
-        if sql[offset:offset+1]==';':
+        if encoded[offset:offset+1]==b';':
             end=offset
         else:
             break
     # A newline keeps a trailing -- comment from swallowing our closing bracket.
-    return sql[:end].rstrip()+'\n'
+    return encoded[:end].decode('utf-8').rstrip()+'\n'
 
 
 def local_file(value):
@@ -333,6 +335,15 @@ def copy_to(conn, sql, target, options, job_id):
 
 
 def perform(conn, action, payload, job_id, on_preview=None, module_context=None):
+    if action == 'chart_studio':
+        from chart_studio import dispatch
+        return dispatch(conn, payload, module_context or {})
+    if action=='export_result':
+        from result_store import export
+        return export(conn,payload,job_id,module_context['workspace'])
+    if action == 'data_editor':
+        from data_editor import dispatch
+        return dispatch(conn, payload, module_context or {})
     if action=='remove_dataset':
         name=str(payload['name'])
         if name not in {i['name'] for i in catalog(conn)}:raise ValueError('Choose an existing dataset.')
@@ -348,7 +359,7 @@ def perform(conn, action, payload, job_id, on_preview=None, module_context=None)
     if action=='completion_metadata':
         rows=conn.execute("SELECT function_name,parameters,return_type,description FROM duckdb_functions() WHERE function_type IN ('scalar','aggregate','table','macro') AND NOT starts_with(function_name,'_') QUALIFY row_number() OVER (PARTITION BY function_name ORDER BY len(parameters))=1 ORDER BY function_name LIMIT 4000").fetchall()
         return {'functions':[{'name':r[0],'parameters':(r[1] or [])[:12],'returns':r[2] or '', 'description':(r[3] or '')[:220]} for r in rows]}
-    if action in ('module_run', 'module_merge', 'module_schema'):
+    if action in ('module_run', 'module_merge', 'module_schema', 'module_manage'):
         from module_runtime import dispatch
         return dispatch(conn, action, payload, job_id, module_context or {})
     if action == 'catalog':
@@ -373,6 +384,10 @@ def perform(conn, action, payload, job_id, on_preview=None, module_context=None)
         result['catalog'] = catalog(conn)
         return result
     if action == 'query':
+        if payload.get('retain_result') or payload.get('result_id'):
+            from result_store import query
+            retained=query(conn,payload,job_id,module_context or {})
+            if retained is not None:return retained
         logical_size = max(10, min(1000000, int(payload.get('size', 100))))
         size = min(500, logical_size)
         offset = max(0, min(10**12, int(payload.get('offset', 0))))
@@ -505,7 +520,7 @@ def serve_worker(workspace, channel, progress, cancelled):
                 if cancelled.is_set():raise RuntimeError('Cancelled.')
                 result=perform(conn,job['action'],job['payload'],job['id'],
                                on_preview=lambda value:channel.send({'status':'preview','preview':value}),
-                               module_context={'workspace':Path(workspace),'cancelled':cancelled,
+                               module_context={'workspace':Path(workspace),'cancelled':cancelled,'settings':settings,
                                  'emit':lambda value:channel.send({'status':'activity','activity':value})})
                 conn.execute('SELECT 1').fetchone()  # Release the completed result cursor.
                 result['elapsed_ms']=round((time.perf_counter()-started)*1000,2)
