@@ -64,6 +64,15 @@ const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'wor
   await freshPage.goto(session.url+'/?companion_show='+artifactId+'#'+session.token);
   await freshPage.waitForFunction(()=>state.result?.rows?.[0]?.[0]===42);
   assert(!freshPage.url().includes('companion_show'));await fresh.close();
+  const beforeModal=await page.evaluate(()=>state.activeTab),modalPopup=page.waitForEvent('popup');
+  await page.locator('#detach-results').click();const resultWindow=await modalPopup;
+  await resultWindow.getByRole('button',{name:'Filter companion_answer',exact:true}).click();
+  await resultWindow.locator('#result-filter-dialog').waitFor();await page.waitForFunction(()=>!state.busy);
+  await resultWindow.locator('#rf-kind').selectOption('contains');await resultWindow.locator('#rf-text').fill('42');
+  const incoming=spawnSync(path.resolve('runtime/python/python.exe'),['-c',"import sys,time;from companion_store import Ledger;Ledger(sys.argv[1]).put('artifact',{'task':'browser-fixture','inputs':['fixture-version'],'edited':False,'sql':'SELECT 42 AS companion_answer','result_id':sys.argv[2],'created':time.time()},'modal-follow-fixture')",boot.workspace,retained.result_id],{encoding:'utf8'});
+  assert.equal(incoming.status,0,incoming.stderr);await page.waitForTimeout(1800);
+  assert.equal(await page.evaluate(()=>state.activeTab),beforeModal,'Follow preserves a detached filter dialog');
+  assert.equal(await resultWindow.locator('#rf-text').inputValue(),'42');await resultWindow.close();
   await toggle.click(); await page.reload();
   await page.getByRole('button',{name:'Follow Claude',exact:true}).waitFor();
   await panel.getByRole('button',{name:'Minimize Claude activity'}).click();

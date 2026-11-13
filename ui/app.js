@@ -9,7 +9,7 @@ const state = {data: null, selected: null, result: null, profile: null, view: 't
   library: 'saved', sort: null, sqlBeforeBuilder: '', activeSQL: '', groupBase: '', tabs: [], activeTab: null};
 const labels = {catalog: 'Opening your workspace', preview: 'Previewing your file', open: 'Opening your dataset',
   convert: 'Converting to Parquet', query: 'Running your query', export: 'Exporting full results',export_result:'Saving current results',
-  count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset', inspect_result:'Loading complete row'};
+  count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset', inspect_result:'Loading complete row',result_values:'Finding distinct values'};
 let draftTimer=null;
 
 function node(tag, attrs = {}, ...children) {
@@ -349,7 +349,9 @@ function tableFor(result, {interactive=false, mini=false} = {}) {
     const content = node(interactive && result.selectable ? 'button' : 'span',
       interactive && result.selectable ? {onclick:() => sortColumn(col.name).catch(report), title:'Sort this complete query by ' + col.name} : {},
       col.name, node('span', {class:'column-type'}, col.type));
-    header.append(node('th', {}, content));
+    const th=node('th', {}, content);
+    if(interactive&&result.selectable&&result.retained&&state.mode!=='pivot')window.bedazzleResultFilters?.header(th,col.name,result);
+    header.append(th);
   }
   table.append(node('thead', {}, header));
   const body = node('tbody');
@@ -401,6 +403,7 @@ function renderResults() {
   $('result-notice').textContent = notes.join(' '); show('result-notice',!!notes.length);
   updatePaging(); prepareChart();
   window.bedazzlePivot?.decorate();
+  window.bedazzleResultFilters?.summary();
 }
 function renderResultSummary(){
   const result=state.result;if(!result)return;
@@ -427,6 +430,7 @@ function setResultView(view) {
 }
 async function sortColumn(column) {
   if(state.mode==='pivot'&&window.bedazzlePivot?.sortResult)return window.bedazzlePivot.sortResult(column);
+  if(state.result?.retained&&window.bedazzleResultFilters)return window.bedazzleResultFilters.sort(column);
   if (!state.result || state.result.statement_count !== 1&&!state.result.retained) throw new Error('Run a single SELECT before sorting its results.');
   const direction = state.sort?.column === column && state.sort.direction === 'ASC' ? 'DESC' : 'ASC';
   const base = state.sort?.base || state.result.sql;

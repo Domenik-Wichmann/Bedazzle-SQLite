@@ -1,5 +1,31 @@
 # Bedazzle verification
 
+Result sorting and filters (2026-11-13, 1.7.0): header sorts now generate visible
+ORDER BY SQL. The funnel card supports batched distinct-value search/checkboxes,
+literal text conditions, case sensitivity and separate NULL/empty values. Native
+tests cover a million unique values, search beyond previews, bounded large cells,
+SQL literals with quotes/NUL, combined filters, generated SQL, scripts executing
+once, random-value preservation, source removal, exports/inspection, clearing,
+hard-link/copy storage, quota/cancellation cleanup and inherited edited lineage.
+Browser checks exercise the tall card, exact selection, partial matching, SQL
+updates, draft preservation, paged discovery, dark/narrow layouts and detached
+results. Existing export/editor/theme and detached-result regressions also pass.
+Saved base rows stay local; the original query's LIMIT still applies. The feature
+does not promise that discovering distinct values in a large result is cheap.
+
+The complete Python suite passed **104 tests in 70.268 seconds**. All ten new
+native result-filter tests passed, along with the new end-to-end browser flow,
+existing export/editor/theme checks, detached-result dialogs and complete connected
+Pivot/browser regressions. A header-position override caught by those regressions
+was removed. An older-engine guard keeps the prior result intact and gives an
+explicit Quit/restart instruction before issuing unsupported filter operations.
+
+Portable-package checks exercise the new value-discovery action, SQL-generating
+views and clearing back to identical random values from the shipped runtime in a
+path containing spaces/apostrophes. Unicode-escaped value responses stay bounded.
+Follow also recognizes open dialogs/inputs in detached result windows so incoming
+Claude results cannot switch the view while the filter card is being edited.
+
 Git for Windows detection fix (2026-11-13, 1.6.1): detection no longer relies only
 on the running process's PATH. It checks the official installer's current-user and
 machine InstallPath registry entries (both registry views), standard Program Files

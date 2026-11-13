@@ -93,7 +93,7 @@ function setupDetachedResults(){
       window.bedazzleResultsWindow=doc;
       move(panel,doc.body);
       button.after(colorButton());
-      for(const id of ['job-strip','toast-container','detail-dialog','export-dialog','module-dialog','module-history-dialog','data-editor','de-drafts','de-cell-dialog','de-save-dialog','instructions-dialog'])move(document.getElementById(id),doc.body);
+      for(const id of ['job-strip','toast-container','detail-dialog','export-dialog','module-dialog','module-history-dialog','data-editor','de-drafts','de-cell-dialog','de-save-dialog','instructions-dialog','result-filter-dialog'])move(document.getElementById(id),doc.body);
       // The help layer is document-local, with no second query engine or app init.
       const help=doc.createElement('script');help.src=new URL('/bedazzle.js',location.href).href;doc.head.append(help);
       $('expand-results').classList.add('hidden');

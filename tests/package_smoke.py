@@ -79,6 +79,14 @@ def main():
         result=job('query',{'sql':f'SELECT count(*) FROM "{opened["name"]}"'})
         assert result['rows']==[[6]]
         print('PASS: clean extracted app imports and queries its example')
+        frozen=job('query',{'sql':"SELECT i AS id,'Supplier_'||i AS supplier,random() AS r FROM range(10) t(i)",'retain_result':True})
+        choices=job('result_values',{'result_id':frozen['result_id'],'column':'supplier','search':'9'})
+        assert choices['items'][0]['value']=='Supplier_9'
+        filtered=job('query',{'sql':frozen['sql'],'result_id':frozen['result_id'],'view':{'filters':[{'column':'supplier','kind':'contains','text':'9'}],'sort':{'column':'id','direction':'DESC'}},'replace_result_id':frozen['result_id']})
+        assert filtered['rows']==[frozen['rows'][9]] and 'ORDER BY result_view."id" DESC' in filtered['sql']
+        restored=job('query',{'sql':filtered['sql'],'result_id':filtered['result_id'],'view':{'filters':[],'sort':None},'replace_result_id':filtered['result_id']})
+        assert restored['rows']==frozen['rows']
+        print('PASS: packaged value discovery, SQL-generating filters/sorts and immutable-base restoration preserve random values')
         draft={'active':'draft-one','updated':time.time()*1000,'tabs':[{'id':'draft-one','name':'Persistent draft','sql':'SELECT 123 AS draft;'}]}
         request('/api/drafts',draft)
         request('/api/save',{'name':'Saved from extracted ZIP','sql':'SELECT 123'})

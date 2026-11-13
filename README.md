@@ -200,6 +200,50 @@ node tests/bedazzle_smoke.cjs
 runtime\python\python.exe tests/stop_test_servers.py
 ```
 
+## Sort and filter results
+
+Click a result heading to sort ascending, then click again for descending. The
+editor immediately shows the corresponding `ORDER BY`. A funnel button next to
+each ordinary result heading opens a tall, scrollable filter card. It also works
+in detached result windows. Pivot headings retain their existing hierarchy-aware
+sort controls.
+
+The card offers two approaches:
+
+- **Choose values:** search the complete saved result and load up to 100 distinct
+  values per batch, with exact counts. All values start selected; unchecking a
+  value excludes it. Clear selection and check specific values to include only
+  those, or use Only shown for the currently loaded items. NULL and empty text are
+  distinct choices. Search changes the choices displayed; Apply changes the rows.
+- **Text conditions:** Contains, Starts with, Exact text and Does not contain.
+  Enter the text and press Enter to apply. Matching is case-insensitive unless
+  Case sensitive is checked. Percent and underscore are literal characters, not
+  wildcards. Text conditions exclude NULL; use Is NULL/Is not NULL for missing values.
+
+Filters combine across columns. The value picker respects other column filters
+while ignoring its own, so you can revise a selection or recover from zero matches.
+The badges above the grid let you reopen filters, clear all filters, or clear the
+header sort. Values load in bounded batches (at most 1,000 displayed before refining
+the search); searching never downloads the entire distinct-value list. Discovering
+values can still scan the full retained result and take time. Cancel loading is
+available. Prefer a text condition over selecting hundreds of individual values.
+
+Both filters and sorts update the SQL through a readable outer SELECT, preserving
+the original query's aliases, grouping, CTEs and LIMIT. They operate on all rows in
+that query's saved result, not source rows excluded by its original LIMIT. They do
+not rerun the source query or change source files. Random values and script setup
+remain unchanged while browsing. Pressing Run explicitly executes the generated
+SQL again, including preceding setup statements if the original was a script.
+An independently edited SQL draft stays in its tab; the generated view opens in a
+new tab. Exports and row inspection use the filtered/sorted retained rows.
+
+An immutable base allows filters to be removed even after source changes. Bases
+share file storage through hard links where supported and otherwise use a bounded
+copy. Complete filtered results consume additional disk space and obey the temporary
+disk budget; cleanup/cancellation preserves the previous result. Explicit selections
+are bounded to 1,000 values across at most 16 column filters. Very long values use
+short labels and content identities rather than transferring their whole text.
+
 ## Export current results
 
 The **Chart** results tab offers 17 chart types, multiple value columns, tooltips, legends, zoom and PNG/SVG export. It uses the first 100 loaded rows; repeated labels are summed. The Values box shows selected columns; expand it to choose from the full vertical checkbox list. Quick charts use the displayed preview values, so use Chart studio for full retained data.

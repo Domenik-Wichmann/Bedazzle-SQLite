@@ -1,4 +1,23 @@
-# Bedazzle 1.6.1
+# Bedazzle 1.7.0
+
+- Result heading clicks now add ascending/descending ORDER BY to the SQL.
+- Funnel buttons open a tall filter card with searchable, paged distinct values
+  and checkboxes, or Contains/Starts with/Exact text/Does not contain/NULL filters.
+  Text conditions apply with Enter and support optional case sensitivity.
+- Filters work on all retained rows, combine across columns and can be cleared
+  through badges. NULL/empty values are separate; original LIMITs still apply.
+- Sorting/filtering never reruns the source query. Retained random values, script
+  side effects and source integrity are preserved. The SQL is reproducible through
+  an outer SELECT, while unrelated drafts remain in their original tabs.
+- Distinct values load in bounded batches rather than all at once. The card supports
+  cancellation, large-value identities, dark/narrow layouts and detached results.
+  Discovering values can still require scanning the full saved result.
+
+Use Quit to stop the existing background service before replacing application
+files, preserve your workspace folders, and start Bedazzle again. The backend
+update requires a restart; the Claude extension and skill remain unchanged.
+
+## Bedazzle 1.6.1
 
 Fixes Git for Windows being reported as missing after installation. Bedazzle now
 checks Git's registered installation and standard machine/per-user folders when

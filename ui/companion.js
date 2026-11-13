@@ -146,7 +146,8 @@
       while (list.children.length > 100) list.firstChild.remove();
       if(requestedShow && state.data && state.tabs.length && !state.busy) {
         if(!requestedShow.explicit && !following){requestedShow=null;return;}
-        const editing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable||document.querySelector('dialog[open]');
+        const editing=[document,window.bedazzleResultsWindow,window.bedazzleChartWindow].filter(Boolean).some(doc=>
+          ['INPUT','TEXTAREA','SELECT'].includes(doc.activeElement?.tagName)||doc.activeElement?.isContentEditable||doc.querySelector('dialog[open]'));
         if(!requestedShow.explicit && editing)return;
         const artifact=value.artifacts.find(item=>item.id===requestedShow.id)||await api('/api/companion-artifact?id='+encodeURIComponent(requestedShow.id));
         if(artifact?.result_id) {

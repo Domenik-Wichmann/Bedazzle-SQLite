@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import uuid
 
 from engine import ROOT, serve_worker
-APP_VERSION = '1.6.1'
+APP_VERSION = '1.7.0'
 
 
 def hardware():
@@ -177,7 +177,7 @@ class Jobs:
         self.store.put('settings', clean)
 
     def submit(self, action, payload, queued_id=None):
-        if action not in ('companion', 'catalog', 'preview', 'open', 'convert', 'query', 'inspect_result', 'export', 'export_result', 'profile', 'count', 'explain', 'rename', 'remove_dataset', 'module_run', 'module_merge', 'module_schema', 'module_manage', 'completion_metadata', 'data_editor', 'chart_studio'):
+        if action not in ('companion', 'catalog', 'preview', 'open', 'convert', 'query', 'inspect_result', 'result_values', 'export', 'export_result', 'profile', 'count', 'explain', 'rename', 'remove_dataset', 'module_run', 'module_merge', 'module_schema', 'module_manage', 'completion_metadata', 'data_editor', 'chart_studio'):
             raise ValueError('Unknown operation.')
         with self.lock:
             if self.closed:

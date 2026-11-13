@@ -55,9 +55,33 @@ def release(workspace,key):
   if any(a.get('result_id')==key for a in Ledger(workspace).list('artifact',100000)):
    return
  folder=location(workspace,key)
- for name in ('rows.parquet','result.json','rows.partial','result.tmp'):(folder/name).unlink(missing_ok=True)
+ for name in ('rows.parquet','base.parquet','result.json','rows.partial','result.tmp','lineage.tmp'):(folder/name).unlink(missing_ok=True)
  try:folder.rmdir()
  except OSError:pass
+
+def stored_bytes(workspace,extra=()):
+ """Count hard-linked immutable bases once; copied bases still consume the quota."""
+ seen=set();total=0
+ files=list((Path(workspace)/'results').glob('*/rows.parquet'))+list((Path(workspace)/'results').glob('*/base.parquet'))+list(extra)
+ for path in files:
+  stat=path.stat();identity=(stat.st_dev,stat.st_ino) if stat.st_ino else str(path)
+  if identity not in seen:seen.add(identity);total+=stat.st_size
+ return total
+
+
+def link_base(source,target,environment):
+ try:os.link(source,target);return
+ except OSError:pass
+ if shutil.disk_usage(target.parent).free<source.stat().st_size+512*1024**2:raise ValueError('Not enough free space for an immutable filter base.')
+ quota=environment.get('settings',{}).get('spill_gb',10)*1024**3
+ if stored_bytes(environment['workspace'])+source.stat().st_size>quota:raise ValueError('Retaining the filter base exceeds the temporary disk budget.')
+ with source.open('rb') as input,target.open('xb') as output:
+  while True:
+   if environment.get('cancelled') and environment['cancelled'].is_set():raise InterruptedError('Cancelled.')
+   block=input.read(1024**2)
+   if not block:break
+   output.write(block)
+
 
 def query(conn,payload,job_id,environment):
  workspace=environment.get('workspace')
@@ -72,17 +96,29 @@ def query(conn,payload,job_id,environment):
   for statement in statements[:-1]:conn.execute(statement.query)
   body=query_body(statements[-1].query)
   info={'sql':original,'statement_count':len(statements)}
+ view=payload.get('view');base_file=None
  if payload.get('sort'):
-  sort=payload['sort'];direction=sort.get('direction','ASC')
-  if direction not in ('ASC','DESC'):raise ValueError('Invalid sort direction.')
-  body=f'SELECT * FROM ({body}) sorted_result ORDER BY {identifier(sort["column"])} {direction}'
- if not key or payload.get('sort'):
+  view={**info.get('result_view',{'filters':[]}), 'sort':payload['sort']}
+ if view is not None:
+  if not key:raise ValueError('Run the query once before filtering or sorting its retained results.')
+  from result_view import source,normalize,visible_sql,clauses
+  base_file,base_order,view_columns=source(conn,folder,info)
+  plan=normalize(view,view_columns);base_sql=info.get('base_sql',original)
+  original=visible_sql(conn,base_sql,plan);where,sort_order=clauses(plan)
+  body='SELECT * EXCLUDE ('+identifier(base_order)+') FROM read_parquet('+literal(base_file)+') result_view'+where+(sort_order or ' ORDER BY result_view.'+identifier(base_order))
+  info={**info,'sql':original,'base_sql':base_sql,'base_order_column':base_order,'base_rows':info.get('base_rows',info['rows']),'result_view':plan}
+ if not key or view is not None:
   key=job_id;folder=location(workspace,key);folder.mkdir(parents=True,exist_ok=False);created=True
   temporary=folder/'rows.partial'
   if info.get('lineage',{}).get('edited'):
    from companion_store import Ledger
    Ledger(workspace).note_file(folder/'rows.parquet',info['lineage'].get('query_id') or info['lineage']['inputs'][0])
   try:
+   if base_file:
+    link_base(base_file,folder/'base.parquet',environment)
+    if info.get('lineage',{}).get('edited'):
+     from companion_store import Ledger
+     Ledger(workspace).note_file(folder/'base.parquet',info['lineage'].get('query_id') or info['lineage']['inputs'][0])
    emit=environment.get('emit',lambda value:None)
    emit({'label':'Running and retaining results','detail':'Saving this run to compressed local storage. Paging and export will reuse it.','percent':None})
    conn.execute('SET preserve_insertion_order=true')
@@ -97,12 +133,12 @@ def query(conn,payload,job_id,environment):
    cancelled=environment.get('cancelled')
    if cancelled and cancelled.is_set():raise InterruptedError('Cancelled.')
    settings=environment.get('settings',{});quota=settings.get('spill_gb',10)*1024**3
-   previous=payload.get('replace_result_id');used=0
-   for file in (Path(workspace)/'results').glob('*/rows.parquet'):
-    if file.parent.name!=previous:used+=file.stat().st_size
-   if used+temporary.stat().st_size>quota:raise ValueError('Retained results exceed the temporary disk budget. Close unneeded SQL tabs or increase Temporary disk limit in Settings.')
+   if stored_bytes(workspace,[temporary])>quota:raise ValueError('Retained results exceed the temporary disk budget. Close unneeded SQL tabs or increase Temporary disk limit in Settings.')
    if shutil.disk_usage(folder).free<512*1024**2:raise ValueError('Less than 512 MB free disk space remains. Free some space before retaining these results.')
    temporary.replace(folder/'rows.parquet')
+   if info.get('lineage',{}).get('edited'):
+    from companion_store import Ledger
+    Ledger(workspace).note_file(folder/'rows.parquet',info['lineage'].get('query_id') or info['lineage']['inputs'][0])
    info={**info,'rows':count,'created':time.time(),'order_column':order_column}
    (folder/'result.json').write_text(json.dumps(info),encoding='utf-8')
   except BaseException:
@@ -113,6 +149,8 @@ def query(conn,payload,job_id,environment):
  result=page(conn,window_sql,0,size)
  result.update(offset=position,next_offset=position+len(result['rows']))
  result.update(sql=original,result_id=key,total_rows=info['rows'],total_status='exact',page_start=offset,logical_size=logical,statement_count=info['statement_count'],retained=True)
+ result['result_view']=info.get('result_view',{'filters':[],'sort':None})
+ if 'base_rows' in info:result['unfiltered_rows']=info['base_rows']
  if created and info['statement_count']>1:result['catalog']=catalog(conn)
  previous=payload.get('replace_result_id')
  if created and previous and previous!=key:

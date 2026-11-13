@@ -408,6 +408,9 @@ def perform(conn, action, payload, job_id, on_preview=None, module_context=None)
     if action == 'inspect_result':
         from result_store import inspect_row
         return inspect_row(conn,payload,(module_context or {})['workspace'])
+    if action == 'result_values':
+        from result_view import choices
+        return choices(conn,payload,(module_context or {})['workspace'])
     if action == 'query':
         if payload.get('retain_result') or payload.get('result_id'):
             from result_store import query

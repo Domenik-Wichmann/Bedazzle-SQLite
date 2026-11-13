@@ -1,5 +1,6 @@
 """Explicit source allowlist: no user files, history, tokens or runtime binaries."""
 FILES=[
+    'result_view.py','ui/result_filters.js','tests/test_result_filters.py','tests/result_filters_browser.cjs',
     'companion_store.py','companion_backend.py','companion_mcp.py','companion_local.py','companion_ownership.py','companion_bridge.js',
     'companion_sql.py','companion_features.py','companion_ingest.py','companion_control.py','companion_control.ps1','companion_window.py','Start Bedazzle approvals.cmd','tests/test_companion_control.py',
     'COMPANION.md','COMPANION_VERIFICATION.md','skills/bedazzle/SKILL.md','tools/package_companion.py','tests/test_companion.py','tests/test_companion_bridge.py','tests/test_companion_recovery.py','tests/companion_browser.cjs','tests/companion_package.py','ui/companion.js',

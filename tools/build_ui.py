@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLES = {
     'ui/sql_completion.js': ['ui/theme.js', 'ui/src/sql_completion.js'],
-    'ui/editor.js': ['ui/vendor/sql-formatter.min.js', 'ui/sql_presentation.js', 'ui/src/editor.js',
+    'ui/editor.js': ['ui/vendor/sql-formatter.min.js', 'ui/sql_presentation.js', 'ui/src/editor.js', 'ui/result_filters.js',
                      'ui/query_builder_query.js', 'ui/query_builder.js',
                      'ui/vendor/echarts.min.js', 'ui/charts.js'],
     'ui/workbench.css': ['ui/src/workbench.css', 'ui/theme.css', 'ui/query_builder.css', 'ui/charts.css'],
