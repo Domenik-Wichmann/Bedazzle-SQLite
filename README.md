@@ -53,6 +53,15 @@ Edit the source in that folder. Refresh the browser after HTML/CSS/JavaScript ch
 
 If Python 3.12+ is already installed, `python workbench.py` also works. Development dependencies are in `requirements.txt`; use a virtual environment if desired. The release targets 64-bit Windows 10/11. The repository name is Bedazzle-SQLite; its query engine is **DuckDB 2.0**, so use DuckDB SQL.
 
+Bedazzle 1.6.1 finds Git through PATH, Git for Windows' current-user/system registry
+entries, and its standard machine/per-user installation folders. A fresh installation
+is detected even when the running app inherited an older PATH. After installing
+Git, use **Performance & settings → Refresh Git status**. Git is needed only for
+source updates, not local data analysis. When upgrading older Bedazzle versions,
+download/extract the latest Windows ZIP manually if Git detection blocks the update.
+Keep your existing workspace folders. Use **Quit** to stop the actual service before
+replacing Python files; closing the browser alone leaves the background engine running.
+
 ## Using it
 
 The sidebar workspace button opens **Workspace home** with dataset/query counts, source-file sizes and created/last-worked dates. Its small arrow is the workspace switcher. Create and rename workspaces here; **Delete** removes a workspace from the active list into a recoverable local archive. Restore it from Deleted workspaces on the home page. Archiving keeps its saved work on disk and does not free that space. The initial workspace's container is kept in place because it also contains the registry and other workspaces; deleting it never recursively removes that container.

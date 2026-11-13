@@ -1,5 +1,23 @@
 # Bedazzle verification
 
+Git for Windows detection fix (2026-11-13, 1.6.1): detection no longer relies only
+on the running process's PATH. It checks the official installer's current-user and
+machine InstallPath registry entries (both registry views), standard Program Files
+and per-user locations, and retries each request rather than caching absence.
+Six regression tests cover PATH priority, all standard folders, a custom registry
+installation, rejecting relative locations, installation after an earlier missing
+result, and actual Git execution with an empty inherited PATH. Existing repository
+link/update tests still preserve local edits/private files. A browser regression
+checks refreshing from a missing state to the real installed Git without reopening
+Bedazzle. Registry/PATH are not modified and no administrative rights are requested.
+Installer location reference: https://github.com/git-for-windows/build-extra/blob/main/installer/install.iss
+
+Final 1.6.1 validation: all **94 Python tests passed** in 73.609 seconds when run
+separately from browser workloads. The real HTTP and complete workbench browser
+checks passed, including Refresh Git status, laptop layout, bounded million-row
+paging, plans, clipboard instructions and workspace isolation. Clean portable ZIP
+startup/restart/persistence and the shipped MCPB authorized-import checks passed.
+
 Claude Desktop integration and Follow controls (2026-11-12): see
 [COMPANION_VERIFICATION.md](COMPANION_VERIFICATION.md) for the real stdio/HTTP/worker
 tests, source integrity, separate edit/analysis gates, bounded transfers, module

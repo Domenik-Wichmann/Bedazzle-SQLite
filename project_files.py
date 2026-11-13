@@ -26,7 +26,7 @@ FILES=[
     'modules/image_checker/manifest.json','modules/image_checker/runner.py','modules/image_checker/network.py','modules/image_checker/quality.py','modules/image_checker/similarity.py',
     'tests/image_fixture.py','tests/test_modules.py','tests/test_similarity.py','tests/similarity_browser.cjs','tests/similarity_performance.py','tests/modules_http.py','tests/modules_browser.cjs',
     'ui/sql_completion.js','ui/editor.js','ui/organize.js','ui/organize.css','examples/products.csv','examples/offers.csv','tests/completion.cjs','tests/test_formats.py','tests/editor_browser.cjs','tests/module_performance.py','tests/workflow_profile.py',
-    'tests/test_organize.py','tests/organize_browser.cjs','tests/test_picker.py','tests/modal_errors.cjs','tests/test_memory.py','examples/catalogs.csv','tests/test_engine.py','tests/test_launcher.py','tests/http_smoke.py',
+    'tests/test_organize.py','tests/organize_browser.cjs','tests/test_picker.py','tests/modal_errors.cjs','tests/test_memory.py','tests/test_repository_detection.py','examples/catalogs.csv','tests/test_engine.py','tests/test_launcher.py','tests/http_smoke.py',
     'tests/browser_smoke.cjs','tests/browser_persistence.cjs','tests/bedazzle_smoke.cjs',
     'tests/stop_test_servers.py','tests/package_smoke.py','tests/benchmark.py','tests/performance.py','tests/test_workspaces.py','tests/workbench_smoke.cjs',
 ]

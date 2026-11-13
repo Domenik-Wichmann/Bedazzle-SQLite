@@ -1,4 +1,17 @@
-# Bedazzle 1.6.0
+# Bedazzle 1.6.1
+
+Fixes Git for Windows being reported as missing after installation. Bedazzle now
+checks Git's registered installation and standard machine/per-user folders when
+its inherited PATH is stale. **Performance & settings → Refresh Git status** retries
+detection without restarting. Git remains optional for ordinary local data work.
+
+The Claude extension stays at 0.2.0 and the skill is unchanged; neither needs to be
+reinstalled for this fix. On a computer affected by the old detection bug, manually
+download the new Windows ZIP, use Quit to stop Bedazzle's service, extract the updated
+application into the existing app folder while preserving workspace data, then run
+Start Bedazzle.cmd. Verify the footer says 1.6.1 and refresh Git status in settings.
+
+## Bedazzle 1.6.0
 
 This release brings local Claude Desktop integration, richer query/chart tools,
 and more control over background activity. The companion extension is version 0.2.0.

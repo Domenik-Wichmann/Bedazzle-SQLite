@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import uuid
 
 from engine import ROOT, serve_worker
-APP_VERSION = '1.6.0'
+APP_VERSION = '1.6.1'
 
 
 def hardware():

@@ -2,10 +2,56 @@
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
 UPSTREAM = 'https://github.com/Domenik-Wichmann/Bedazzle-SQLite.git'
+GIT_NOT_FOUND = ('Git could not be found in PATH or its Windows installation locations. '
+                 'If you just installed Git for Windows, click Refresh Git status to retry. '
+                 'Git is only needed for source updates; your local data tools remain available.')
+
+
+def windows_git_roots():
+    """Read installer locations without changing registry, PATH or machine settings."""
+    try:
+        import winreg
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for view in (0, winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                try:
+                    with winreg.OpenKey(hive, r'Software\GitForWindows', 0, winreg.KEY_READ | view) as key:
+                        value, kind = winreg.QueryValueEx(key, 'InstallPath')
+                    if kind in (winreg.REG_SZ, winreg.REG_EXPAND_SZ) and isinstance(value, str) and value.strip():
+                        yield Path(winreg.ExpandEnvironmentStrings(value).strip().strip('"'))
+                except OSError:
+                    continue
+    except ImportError:
+        pass
+    for name in ('ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)'):
+        if os.environ.get(name):
+            yield Path(os.environ[name]) / 'Git'
+    if os.environ.get('LOCALAPPDATA'):
+        yield Path(os.environ['LOCALAPPDATA']) / 'Programs' / 'Git'
+
+
+def git_executable():
+    """Resolve afresh on every request, including after an in-session installation."""
+    command = shutil.which('git')
+    if command:
+        return command
+    if sys.platform == 'win32':
+        seen = set()
+        for root in windows_git_roots():
+            if not root.is_absolute():
+                continue
+            for relative in ('cmd/git.exe', 'bin/git.exe'):
+                candidate = root / relative
+                key = str(candidate).casefold()
+                if key not in seen:
+                    seen.add(key)
+                    if candidate.is_file():
+                        return str(candidate)
+    return None
 
 
 class Repository:
@@ -14,12 +60,13 @@ class Repository:
         self.lock = threading.Lock()
 
     def git(self, *args, check=True):
-        command = shutil.which('git')
+        command = git_executable()
         if not command:
-            raise ValueError('Install Git for Windows from git-scm.com, then restart Bedazzle. Your files stay as they are.')
+            raise ValueError(GIT_NOT_FOUND)
         result = subprocess.run([command, '-C', str(self.root), *args], capture_output=True,
                                 encoding='utf-8', errors='replace', timeout=120,
-                                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GCM_INTERACTIVE': 'never'},
+                                env={**os.environ, 'PATH':str(Path(command).parent)+os.pathsep+os.environ.get('PATH',''),
+                                     'GIT_TERMINAL_PROMPT': '0', 'GCM_INTERACTIVE': 'never'},
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         if check and result.returncode:
             raise ValueError((result.stderr or result.stdout).strip()[-1500:])
@@ -35,8 +82,9 @@ class Repository:
             raise ValueError('This folder uses a different Git origin. Manage it with your existing Git tools.')
 
     def status(self):
-        if not shutil.which('git'):
-            return {'available': False, 'linked': False, 'message': 'Git is not installed. Install Git for Windows, then restart Bedazzle.'}
+        command = git_executable()
+        if not command:
+            return {'available': False, 'linked': self.linked(), 'message': GIT_NOT_FOUND}
         if not self.linked():
             return {'available': True, 'linked': False, 'message': 'Connect this folder to the Bedazzle repository. Existing files and edits are kept.'}
         remote = self.git('remote', 'get-url', 'origin', check=False)

@@ -10,6 +10,14 @@ const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'wor
  const query=async sql=>{await page.locator('#sql-editor').fill(sql);await page.locator('#run-query').click();await idle();};
  try{
   await page.goto(session.url+'/#'+session.token);await ready();await page.locator('#workspace-nav').click();await page.locator('.workspace-card.current .button.primary').click();
+  await page.route('**/api/repository',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({available:false,linked:false,message:'Git could not be found. Click Refresh Git status to retry.'})}));
+  await page.locator('#performance-nav').click();
+  await page.waitForFunction(()=>document.querySelector('#repository-status').textContent.startsWith('Git could not be found'));
+  assert(await page.locator('#repository-link').isDisabled());assert(await page.locator('#repository-refresh').isEnabled());
+  await page.unroute('**/api/repository');await page.locator('#repository-refresh').click();
+  await page.waitForFunction(()=>!document.querySelector('#repository-link').disabled);
+  assert(await page.locator('#repository-refresh').isEnabled());await page.getByRole('button',{name:'Close settings',exact:true}).click();
+  console.log('PASS: missing-Git state can refresh to the real detected installation without restarting or changing files');
   await page.locator('#sql-editor').fill(Array.from({length:1500},(_,i)=>'-- line '+i).join('\n')+'\nSELECT 1;');
   let bounds=await page.evaluate(()=>({body:document.body.scrollHeight,h:innerHeight,editor:document.querySelector('.editor-panel').getBoundingClientRect().height,result:document.querySelector('.results-panel').getBoundingClientRect().bottom}));
   assert(bounds.body<=bounds.h+1);assert(bounds.editor<400);assert(bounds.result<=bounds.h);

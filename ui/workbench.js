@@ -174,6 +174,7 @@ function renderPlan(output){
 }
 async function refreshRepository(){renderRepository(await api('/api/repository'));}
 function renderRepository(value){
+  if($('repository-refresh'))$('repository-refresh').disabled=false;
   $('repository-status').textContent=value.message;$('repository-link').disabled=!value.available||value.linked;
   $('repository-check').disabled=!value.available||!value.linked;$('repository-update').disabled=!value.available||!value.linked||value.modified||!value.behind||!!value.ahead;
 }
@@ -181,6 +182,7 @@ async function repositoryAction(action){
   for(const button of document.querySelectorAll('.repository-actions button'))button.disabled=true;
   $('repository-status').textContent=action==='link'?'Connecting this folder. Your current files are kept…':'Contacting GitHub…';
   try{renderRepository(await api('/api/repository',{action}));}catch(error){await refreshRepository().catch(()=>{});$('repository-status').textContent=error.message;}
+  finally{if($('repository-refresh'))$('repository-refresh').disabled=false;}
 }
 async function changeWorkspace(value){
   if(state.busy)throw new Error('Wait for the current operation or cancel it first.');
@@ -195,6 +197,11 @@ async function instructions(copy){
   }catch(error){status.textContent=error.message;}
 }
 function setupWorkbench(){
+  const refresh=node('button',{id:'repository-refresh',type:'button',class:'button secondary',onclick:async()=>{
+    refresh.disabled=true;
+    try{await refreshRepository();}catch(error){$('repository-status').textContent=error.message;}finally{refresh.disabled=false;}
+  }},'Refresh Git status');
+  document.querySelector('.repository-actions').prepend(refresh);
   setupDetachedResults();
   const registry=state.data.workspaces;
   $('workspace-name').textContent=registry.items.find(item=>item.id===registry.selected).name;

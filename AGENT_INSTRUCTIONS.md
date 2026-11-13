@@ -2,6 +2,12 @@
 
 This document describes my local data workbench. Use it to explain features, help me write DuckDB SQL, and help me analyze files without loading an entire large dataset into the UI or Python memory.
 
+Git is optional for local data work. **Performance & settings → Refresh Git status**
+redetects a newly installed Git for Windows through PATH, installer registry entries
+and standard installation folders, even when the process has an older PATH. When
+replacing Python application files, use **Quit** to stop the service first; closing
+its browser tab alone does not stop a headless engine. Preserve workspace folders.
+
 ## What Bedazzle is
 
 ### Local Claude Desktop integration
