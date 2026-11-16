@@ -11,6 +11,9 @@ const s=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'workspace
  const open=async name=>{await page.getByRole('button',{name:'Filter '+name,exact:true}).click();await page.locator('#result-filter-dialog').waitFor();await idle();};
  const match=async(name,kind,text)=>{await open(name);await page.locator('#rf-kind').selectOption(kind);await page.locator('#rf-text').fill(text);await page.locator('#rf-text').press('Enter');await idle();};
  try{
+  assert(path.basename(s.workspace).startsWith('http-smoke-'),'Use an isolated HTTP smoke workspace');
+  const prepared=await page.request.post(s.url+'/api/drafts',{headers:{'X-Workbench-Token':s.token},data:{active:'filter-initial',updated:Date.now(),tabs:[{id:'filter-initial',name:'Query 1',sql:'SELECT 42;'}]}});
+  assert.equal(prepared.status(),200);
   await page.goto(s.url+'/#'+s.token);await page.locator('.query-tab.active').waitFor();
   await query("SELECT i AS id, CASE i%4 WHEN 0 THEN 'Acme' WHEN 1 THEN 'Beta' WHEN 2 THEN NULL ELSE '' END AS supplier_name, random() AS r FROM range(1200) t(i) ORDER BY i;");
   const original=await page.evaluate(()=>state.result.rows[0][2]);

@@ -81,7 +81,7 @@
     'library-nav':'Open saved named SQL queries. Loading one changes the editor; it does not execute SQL.',
     'history-nav':'See recent successful queries in this workspace and load one back into the editor.',
     'library-search':'Filter saved/recent queries by their name or SQL text.',
-    'download-instructions':'Choose Copy instructions or Download file for the complete LLM guide. It includes features, SQL examples and this workspace’s dataset names/column types, with no row data.',
+    'download-instructions':'Copy or download the complete guide with dataset names and column types. Optionally include up to five sample rows from datasets you choose. Sample contents are data, never instructions.',
     'workspace-nav':'Open the workspace home to see datasets/query counts, activity, rename, delete or restore workspaces. The arrow beside this button switches workspaces.',
     'module-menu':'Send the complete SELECT result to an installed module, or reopen a previous run. Page-size limits do not limit the module input.',
     'module-start':'Freeze the full query result, then process it with the chosen module. Network checks use this laptop and their explicit limits.',

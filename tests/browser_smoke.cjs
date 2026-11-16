@@ -29,10 +29,14 @@ async function main() {
   try {
     await page.goto(session.url+'/#'+session.token);
     await page.locator('.dataset-item[title$="catalogs.csv"]').first().waitFor();
+    const initialSQL=await page.locator('#sql-editor').inputValue();
     await page.locator('.dataset-item[title$="catalogs.csv"]').first().click();
+    assert.equal(await page.locator('#sql-editor').inputValue(),initialSQL);
+    await page.locator('.dataset-item[title$="catalogs.csv"]').first().dblclick();
     await waitIdle();
-    assert.equal(await page.locator('#result-table tbody tr').count(),6);
-    console.log('PASS: dataset selection renders a native SQL preview');
+    assert.equal(await page.locator('#dataset-preview-table tbody tr').count(),6);
+    await page.getByRole('button',{name:'Close dataset preview'}).click();
+    console.log('PASS: dataset selection preserves SQL and explicit double-click opens a bounded preview');
 
     await query('SELECT i AS id, i % 5 AS group_id FROM range(1234) t(i) ORDER BY i;');
     assert.equal(await page.locator('#result-table tbody tr').count(),100);

@@ -9,7 +9,7 @@ const state = {data: null, selected: null, result: null, profile: null, view: 't
   library: 'saved', sort: null, sqlBeforeBuilder: '', activeSQL: '', groupBase: '', tabs: [], activeTab: null};
 const labels = {catalog: 'Opening your workspace', preview: 'Previewing your file', open: 'Opening your dataset',
   convert: 'Converting to Parquet', query: 'Running your query', export: 'Exporting full results',export_result:'Saving current results',
-  count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset', inspect_result:'Loading complete row',result_values:'Finding distinct values'};
+  count: 'Counting every record', profile: 'Profiling your dataset', explain: 'Inspecting the query plan', rename: 'Renaming dataset', inspect_result:'Loading complete row',result_values:'Finding distinct values',dataset_preview:'Loading first ten rows',dataset_sample_csv:'Preparing sample CSV',agent_instructions:'Preparing sample instructions'};
 let draftTimer=null;
 
 function node(tag, attrs = {}, ...children) {
@@ -128,16 +128,19 @@ function renderCatalog() {
   if (!datasets.length) $('datasets').append(node('p', {class:'sidebar-empty'}, 'Your files will feel at home here.'));
   for (const dataset of datasets) {
     const button = node('button', {class:'dataset-item' + (dataset.name === state.selected ? ' selected' : ''), title: dataset.path || dataset.name,
-      onclick: () => selectDataset(dataset.name).catch(report)},
+      'data-dataset':dataset.name,'aria-pressed':String(dataset.name===state.selected),
+      onclick: () => selectDataset(dataset.name).catch(report),ondblclick:()=>window.bedazzleDatasetTools?.preview(dataset.name)},
       node('span', {class:'dataset-icon'}, dataset.kind.slice(0,3).toUpperCase()),
       node('span', {class:'dataset-text'}, node('strong', {}, dataset.name), node('small', {}, dataset.error ? 'Source unavailable' : `${dataset.columns.length} columns${dataset.bytes ? ' · ' + humanBytes(dataset.bytes) : ''}`)));
     $('datasets').append(node('div',{class:'dataset-row'},button,
+      node('button',{class:'dataset-preview-button','aria-label':'Preview '+dataset.name,title:'Preview first ten rows',onclick:()=>window.bedazzleDatasetTools?.preview(dataset.name)},'⌕'),
       node('button',{class:'dataset-rename','aria-label':'Rename '+dataset.name,title:'Rename dataset',onclick:()=>openRename(dataset.name)},'✎'),node('button',{class:'dataset-remove','aria-label':'Remove '+dataset.name,title:'Remove dataset',onclick:()=>removeDataset(dataset.name).catch(report)},'×')));
   }
   const previous = $('builder-dataset').value;
   fillOptions('builder-dataset', datasets.map(item => [item.name, item.name]));
   $('builder-dataset').value = datasets.some(d => d.name === previous) ? previous : state.selected || '';
   builderColumns();
+  window.bedazzleDatasetTools?.context();
 }
 function renderResources() {
   const {effective, hardware} = state.data;
@@ -160,7 +163,7 @@ function setEditor(sql) {
   if(tab){tab.sql=sql;persistTabs();}
 }
 function persistTabs(){
-  const snapshot={active:state.activeTab,updated:Date.now(),tabs:state.tabs.map(tab=>({id:tab.id,name:tab.name,sql:tab.sql}))};
+  const snapshot={active:state.activeTab,updated:Date.now(),tabs:state.tabs.map(tab=>({id:tab.id,name:tab.name,sql:tab.sql,dataset:tab.dataset??null,saved_id:tab.saved_id??null}))};
   localStorage.setItem(draftKey('tabs'),JSON.stringify(snapshot));
   clearTimeout(draftTimer);
   draftTimer=setTimeout(()=>api('/api/drafts',snapshot).catch(()=>{}),650);
@@ -168,11 +171,12 @@ function persistTabs(){
 function cacheTab(){
   const tab=state.tabs.find(item=>item.id===state.activeTab);
   if(!tab)return;
-  Object.assign(tab,{sql:$('sql-editor').value,result:state.result,groups:[...state.groups],groupDataset:state.groupDataset,groupBase:state.groupBase,previous:[...state.previous],sort:state.sort,virtualScroll});
+  Object.assign(tab,{sql:$('sql-editor').value,dataset:state.selected,result:state.result,groups:[...state.groups],groupDataset:state.groupDataset,groupBase:state.groupBase,previous:[...state.previous],sort:state.sort,virtualScroll});
 }
 function renderTabs(){
   $('query-tabs').replaceChildren(...state.tabs.map(tab=>node('div',{class:'query-tab'+(tab.id===state.activeTab?' active':'')},
     node('button',{onclick:()=>switchTab(tab.id),title:tab.name},tab.name),
+    canRestoreSaved(tab)?node('button',{class:'tab-restore','aria-label':'Restore saved query '+tab.name,title:'Restore this saved query without running it',onclick:()=>restoreSavedTab(tab.id)},'↶'):null,
     node('button',{class:'tab-close','aria-label':'Close '+tab.name,onclick:()=>closeTab(tab.id)},'×'))),
     node('button',{class:'new-tab','aria-label':'New SQL tab',title:'New SQL tab',onclick:()=>newTab()},'+'),
     node('button',{id:'expand-editor',class:'icon-button expand-button',title:'Expand editor','aria-label':'Expand editor',onclick:()=>focusPanel(focusView?'':'editor')},focusView?'↙':'⛶'));
@@ -183,9 +187,11 @@ function switchTab(id){
   cacheTab();
   const tab=state.tabs.find(item=>item.id===id);if(!tab)return;
   state.activeTab=id;state.result=tab.result||null;state.groups=tab.groups||[];state.groupDataset=tab.groupDataset||null;
+  state.activeSQL=state.result?.sql||'';
+  if(state.data.catalog.some(item=>item.name===tab.dataset))state.selected=tab.dataset;
   state.groupBase=tab.groupBase||'';state.previous=tab.previous||[];state.sort=tab.sort||null;state.expanded.clear();
   clearVirtualPage();virtualScroll=tab.virtualScroll||0;
-  setEditor(tab.sql);setMode('sql');renderTabs();workArea();
+  setEditor(tab.sql);setMode('sql');renderTabs();renderCatalog();datasetHeading(state.selected);workArea();
   if(state.result)renderResults();else{
     $('result-count').textContent='—';$('query-stat').textContent='No query run in this tab';
     $('result-message').className='result-message';$('result-message').replaceChildren('Run a query to see its results.');
@@ -193,11 +199,11 @@ function switchTab(id){
   setResultView('table');updatePaging();persistTabs();
 }
 function newTab(name,sql){
-  if(state.busy)return toast('Wait for the current operation or cancel it first.');
-  if(state.tabs.length>=10)return toast('Up to 10 SQL tabs can stay open. Save a query and close a tab to make room.');
+  if(state.busy){toast('Wait for the current operation or cancel it first.');return null;}
+  if(state.tabs.length>=10){toast('Up to 10 SQL tabs can stay open. Close a tab to make room; existing SQL was preserved.');return null;}
   cacheTab();
-  const tab={id:crypto.randomUUID(),name:name||'Query '+(state.tabs.length+1),sql:sql||'SELECT 42 AS a_good_place_to_start;'};
-  state.tabs.push(tab);switchTab(tab.id);
+  const tab={id:crypto.randomUUID(),name:name||'Query '+(state.tabs.length+1),sql:sql??'SELECT 42 AS a_good_place_to_start;',dataset:state.selected};
+  state.tabs.push(tab);switchTab(tab.id);return tab;
 }
 function closeTab(id){
   if(state.busy)return toast('Wait for the current operation or cancel it first.');
@@ -216,15 +222,34 @@ function updateLines() {
 }
 async function selectDataset(name) {
   if (state.busy) return toast('Wait for the current operation or cancel it first.');
-  state.selected = name; state.profile = null; state.groups = []; state.groupDataset = null;
+  if(!state.data.catalog.some(item=>item.name===name))throw Error('Choose a dataset in this workspace.');
+  if(state.selected!==name){state.profile=null;$('profile-table').replaceChildren(node('p',{class:'result-empty'},'Run a profile for the selected dataset when ready.'));}
+  state.selected = name;
+  const tab=state.tabs.find(item=>item.id===state.activeTab);if(tab)tab.dataset=name;
+  for(const button of document.querySelectorAll('.dataset-item')){const selected=button.dataset.dataset===name;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));}
   $('builder-dataset').value = name;
-  renderCatalog(); builderColumns(); workArea();
-  const source = selectedSource();
-  datasetHeading(name);
-  if(state.tabs.length<10)newTab(name,`SELECT *\nFROM ${sqlName(name)};`);
-  else setEditor(`SELECT *\nFROM ${sqlName(name)};`);
-  setMode('sql');
-  await runSQL($('sql-editor').value);
+  builderColumns();datasetHeading(name);window.bedazzleDatasetTools?.context();workArea();cacheTab();persistTabs();
+}
+
+function isGeneratedDatasetSQL(sql){return /^\s*SELECT\s+\*\s+FROM\s+"(?:[^"]|"")+"\s*(?:LIMIT\s+100\s*)?;\s*$/i.test(sql);}
+function canRestoreSaved(tab){return (state.data?.saved?.filter(item=>item.name===tab.name&&item.sql!==tab.sql)||[]).length===1&&isGeneratedDatasetSQL(tab.sql);}
+function restoreSavedTab(id,chosen=null){
+  if(state.busy)return toast('Wait for the current operation or cancel it first.');
+  cacheTab();const tab=state.tabs.find(item=>item.id===id);
+  if(!tab||!isGeneratedDatasetSQL(tab.sql)||!chosen&&!canRestoreSaved(tab)){renderTabs();return toast('The tab has changed; its SQL was preserved. Open the saved query from Query library.');}
+  const item=chosen||state.data.saved.find(item=>item.name===tab.name);switchTab(id);setEditor(item.sql);
+  tab.saved_id=item.id;tab.result=null;state.result=null;state.previous=[];state.groups=[];state.groupDataset=null;state.groupBase='';state.sort=null;
+  $('result-count').textContent='—';$('query-stat').textContent='Saved SQL restored · not run';
+  setResultView('table');$('result-message').className='result-message';$('result-message').textContent='Saved SQL restored. Press Run when ready.';updatePaging();renderTabs();cacheTab();persistTabs();
+}
+function openLibraryQuery(item){
+  if(state.busy)return toast('Wait for the current operation or cancel it first.');
+  cacheTab();const exact=state.tabs.find(tab=>tab.sql===item.sql&&(tab.saved_id===item.id||tab.name===item.name));
+  const recover=state.library==='saved'&&state.tabs.find(tab=>tab.name===item.name&&isGeneratedDatasetSQL(tab.sql));
+  if(exact)switchTab(exact.id);else if(recover)restoreSavedTab(recover.id,item);else{
+    const tab=newTab(item.name||'Recent query',item.sql);if(!tab)return;tab.saved_id=state.library==='saved'?item.id:null;persistTabs();
+  }
+  $('library-dialog').close();
 }
 function fillOptions(id, items) {
   $(id).replaceChildren(...items.map(([value,label]) => node('option', {value}, label)));
@@ -342,7 +367,7 @@ async function runSQL(sql, offset = 0, reset = true, extra = {}) {
     throw error;
   }
 }
-function tableFor(result, {interactive=false, mini=false} = {}) {
+function tableFor(result, {interactive=false, mini=false,inspectRows=true} = {}) {
   const table = node('table');
   const header = node('tr', {}, node('th', {class:'row-number'}, '#'));
   for (const col of result.columns) {
@@ -377,7 +402,7 @@ function tableFor(result, {interactive=false, mini=false} = {}) {
       else td.textContent = String(value);
       tr.append(td);
     });
-    tr.addEventListener('dblclick', event => {
+    if(inspectRows)tr.addEventListener('dblclick', event => {
       if (event.target.closest('.drill-button')) return;
       showRow(row,result,index,tr).catch(report);
     });
@@ -613,7 +638,7 @@ function renderLibrary() {
   $('library-list').replaceChildren();
   if (!items.length) return $('library-list').append(node('p',{class:'library-empty'},state.library === 'saved' ? 'Save a query to keep it here for next time.' : 'Your recent queries will appear here.'));
   for (const item of items) {
-    const button=node('button',{class:'library-item-main',onclick:()=>{setEditor(item.sql);setMode('sql');workArea();$('library-dialog').close();}},
+    const button=node('button',{class:'library-item-main',onclick:()=>openLibraryQuery(item)},
       node('strong',{},item.name || item.sql.split('\n')[0].slice(0,90)),node('code',{},item.sql),node('small',{},new Date(item.created*1000).toLocaleString()));
     const row=node('div',{class:'library-item'},button);
     if (state.library === 'saved') row.append(node('div',{class:'query-actions'},node('button',{class:'text-button',onclick:()=>editName('Rename saved query',item.name,async name=>{const data=await api('/api/rename-saved',{id:item.id,name});state.data.saved=data.saved;renderLibrary();})},'Rename'),node('button',{class:'text-button delete-action',onclick:async()=>{if(!confirm('Delete saved query '+item.name+'? Dataset files are kept.'))return;try{const data=await api('/api/remove-saved',{id:item.id});state.data.saved=data.saved;$('saved-count').textContent=data.saved.length;renderLibrary();}catch(error){report(error);}}},'Delete')));

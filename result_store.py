@@ -55,7 +55,7 @@ def release(workspace,key):
   if any(a.get('result_id')==key for a in Ledger(workspace).list('artifact',100000)):
    return
  folder=location(workspace,key)
- for name in ('rows.parquet','base.parquet','result.json','rows.partial','result.tmp','lineage.tmp'):(folder/name).unlink(missing_ok=True)
+ for name in ('rows.parquet','base.parquet','result.json','rows.partial','result.tmp','lineage.tmp','sample.csv','sample.csv.partial'):(folder/name).unlink(missing_ok=True)
  try:folder.rmdir()
  except OSError:pass
 

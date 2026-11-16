@@ -1,5 +1,33 @@
 # Bedazzle verification
 
+Dataset selection, durable SQL tabs and samples (2026-11-16, 1.8.0): single dataset
+clicks now update metadata context without changing SQL/results or submitting a
+query. A separate double-click/button preview freezes up to ten rows and supports
+a bounded full-value CSV browser download. Saved queries open in their own tabs;
+recognized default SELECT snippets on named tabs have explicit saved-SQL recovery.
+Ten-tab overflow refuses replacement. Tabs retain dataset context, and reload does
+not execute their SQL. Optional instructions samples add five bounded rows only for
+checked datasets; default output remains schema-only. Samples remain untrusted data.
+
+Seven native tests cover a million-row lazy source with a ten-row snapshot, exact
+CSV/random-value retention after source removal, empty/wide/quoted datasets, huge
+download rejection, optional five-row guide data/NULL/clipping, budget/unavailable
+cases and edited provenance after download cleanup. The browser regression covers
+all ten tabs, dataset clicks/new-tab overflow, recovery/library opening without
+execution, CSV download, opt-in/selected five-row guides, clipboard/Markdown output,
+reload/fresh-context persistence and a narrow preview. Screenshots are under
+workspace/verification/dataset-preview.png, agent-sample-options.png and
+dataset-preview-narrow.png. Existing browser/import/export/persistence regressions
+were updated for explicit previewing and passed.
+
+The complete Python suite passed **111 tests in 71.977 seconds**. Browser checks
+also passed for the editor/theme, detached results, companion controls and result
+filters. The clean extracted Windows package passed preview/CSV/agent-sample,
+native module, immutable-result, restart and workspace-isolation checks. The
+shipped MCPB initialized and imported a file against a separate clean extraction.
+All tests used isolated workspaces; the user's existing workspace was inspected
+read-only when checking whether the original saved queries were still present.
+
 Result sorting and filters (2026-11-13, 1.7.0): header sorts now generate visible
 ORDER BY SQL. The funnel card supports batched distinct-value search/checkboxes,
 literal text conditions, case sensitivity and separate NULL/empty values. Native

@@ -32,8 +32,12 @@ const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'wor
     await restored.locator('#save-settings').click();
     await restored.locator('#settings-dialog').waitFor({state:'hidden'});
     await restored.locator('#load-demo').click();
-    await restored.waitForFunction(()=>document.querySelector('#result-table tbody')?.children.length===6);
-    console.log('PASS: sample loading still works after changing performance settings');
+    await restored.waitForFunction(()=>!state.busy);
+    assert((await restored.locator('#sql-editor').inputValue()).includes('server-backed draft'));
+    await restored.locator('#dataset-context').getByRole('button',{name:'Preview 10 rows',exact:true}).click();
+    await restored.waitForFunction(()=>document.querySelector('#dataset-preview-table tbody')?.children.length===6);
+    await restored.getByRole('button',{name:'Close dataset preview'}).click();
+    console.log('PASS: sample-file loading preserves SQL; its explicit ten-row preview works after changing settings');
     await restored.locator('#import-parquet').click();
     const output=await restored.locator('#import-output').inputValue();
     assert(output.includes('imports'));

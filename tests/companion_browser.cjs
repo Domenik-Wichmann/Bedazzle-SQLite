@@ -7,6 +7,9 @@ const session=JSON.parse(fs.readFileSync(process.env.BEDAZZLE_TEST_SESSION||'wor
  let fixtureServer;
  try {
   const page=await browser.newPage(),errors=[];
+  assert(path.basename(session.workspace).startsWith('http-smoke-'),'Use an isolated HTTP smoke workspace');
+  const prepared=await page.request.post(session.url+'/api/drafts',{headers:{'X-Workbench-Token':session.token},data:{active:'companion-initial',updated:Date.now(),tabs:[{id:'companion-initial',name:'Query 1',sql:'SELECT 42;'}]}});
+  assert.equal(prepared.status(),200);
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(session.url+'/#'+session.token);
   const panel=page.locator('[aria-label="Claude activity"]'); await panel.waitFor({state:'attached'});

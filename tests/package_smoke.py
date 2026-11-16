@@ -79,6 +79,15 @@ def main():
         result=job('query',{'sql':f'SELECT count(*) FROM "{opened["name"]}"'})
         assert result['rows']==[[6]]
         print('PASS: clean extracted app imports and queries its example')
+        dataset_sample=job('dataset_preview',{'name':opened['name']})['sample']
+        assert dataset_sample['total_rows']==6
+        sample_csv=job('dataset_sample_csv',{'result_id':dataset_sample['result_id']})
+        sample_request=urllib.request.Request(session['url']+'/api/dataset-sample-csv?result_id='+sample_csv['result_id'],headers={'X-Workbench-Token':session['token']})
+        with urllib.request.urlopen(sample_request,timeout=10) as response:sample_bytes=response.read()
+        assert sample_bytes.startswith(b'url,client,catalog,price,quantity') and sample_csv['rows']==6
+        sampled_guide=job('agent_instructions',{'datasets':[opened['name']]})
+        assert sampled_guide['sampled_datasets']==1 and 'Optional dataset samples' in sampled_guide['markdown']
+        print('PASS: packaged ten-row dataset snapshot/CSV download and optional five-row agent guide')
         frozen=job('query',{'sql':"SELECT i AS id,'Supplier_'||i AS supplier,random() AS r FROM range(10) t(i)",'retain_result':True})
         choices=job('result_values',{'result_id':frozen['result_id'],'column':'supplier','search':'9'})
         assert choices['items'][0]['value']=='Supplier_9'

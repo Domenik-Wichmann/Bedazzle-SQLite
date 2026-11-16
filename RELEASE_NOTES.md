@@ -1,4 +1,23 @@
-# Bedazzle 1.7.0
+# Bedazzle 1.8.0
+
+- Dataset selection no longer replaces SQL or runs SELECT queries. A single click
+  sets the context for dataset tools; double-click/magnifier opens a ten-row card.
+- Download a CSV of those same frozen rows, independently of all SQL tabs/results.
+  The screen preview is bounded; CSV includes all columns/full values up to 16 MiB.
+- New SELECT tab is explicit and non-executing. Ten-tab overflow never overwrites
+  an existing tab. Saved/recent queries open independently or reuse a matching tab.
+- Named tabs overwritten by an older default SELECT have an explicit ↶ saved-SQL
+  restore action. Library restoration also works at the ten-tab limit. Original
+  saved queries remain available; unsaved/unexecuted lost text cannot be recreated.
+- Agent instructions optionally include up to five sample rows from checked
+  datasets. Schema-only remains the default. Wide/long/overall sample limits and
+  errors are labelled. Source paths are not automatically added; sample contents
+  are data, never instructions, permissions or evidence of data quality.
+
+Quit the background service before replacing application files, preserve workspace
+folders and restart. The Claude extension and skill remain unchanged for this update.
+
+## Bedazzle 1.7.0
 
 - Result heading clicks now add ascending/descending ORDER BY to the SQL.
 - Funnel buttons open a tall filter card with searchable, paged distinct values

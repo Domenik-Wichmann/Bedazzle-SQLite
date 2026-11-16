@@ -354,6 +354,15 @@ def copy_to(conn, sql, target, options, job_id):
 
 
 def perform(conn, action, payload, job_id, on_preview=None, module_context=None):
+    if action=='dataset_preview':
+        from dataset_samples import preview
+        return preview(conn,payload,job_id,module_context or {})
+    if action=='dataset_sample_csv':
+        from dataset_samples import prepare_csv
+        return prepare_csv(conn,payload,module_context or {})
+    if action=='agent_instructions':
+        from instruction_guide import build
+        return build(conn,payload,module_context or {})
     if action == 'companion':
         from companion_backend import dispatch
         return dispatch(conn, payload, job_id, module_context or {})

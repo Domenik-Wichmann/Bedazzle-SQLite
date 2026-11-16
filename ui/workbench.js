@@ -93,7 +93,7 @@ function setupDetachedResults(){
       window.bedazzleResultsWindow=doc;
       move(panel,doc.body);
       button.after(colorButton());
-      for(const id of ['job-strip','toast-container','detail-dialog','export-dialog','module-dialog','module-history-dialog','data-editor','de-drafts','de-cell-dialog','de-save-dialog','instructions-dialog','result-filter-dialog'])move(document.getElementById(id),doc.body);
+      for(const id of ['job-strip','toast-container','detail-dialog','export-dialog','module-dialog','module-history-dialog','data-editor','de-drafts','de-cell-dialog','de-save-dialog','instructions-dialog','result-filter-dialog','dataset-preview-dialog'])move(document.getElementById(id),doc.body);
       // The help layer is document-local, with no second query engine or app init.
       const help=doc.createElement('script');help.src=new URL('/bedazzle.js',location.href).href;doc.head.append(help);
       $('expand-results').classList.add('hidden');
@@ -190,6 +190,7 @@ async function changeWorkspace(value){
   await api('/api/drafts',JSON.parse(localStorage.getItem(draftKey('tabs'))));await api('/api/workspace',value);location.reload();
 }
 async function instructions(copy){
+  if(window.bedazzleDatasetTools)return window.bedazzleDatasetTools.instructions(copy);
   const status=$('instructions-status');status.textContent='Preparing instructions…';
   try{const value=await api('/api/agent-instructions');
     if(copy){await navigator.clipboard.writeText(value.markdown);status.textContent='Copied. Paste the whole guide into your LLM.';}

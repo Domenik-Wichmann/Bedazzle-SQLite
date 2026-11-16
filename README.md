@@ -90,7 +90,7 @@ First launch includes an **Example workspace**: [products.csv](examples/products
 - **Send to module → Image URL Checker:** beside Export, send the complete SELECT to a reusable module. Choose multiple URL columns, optional expected width/height/bytes/MIME columns, and limits. It checks HTTP/TLS/redirects, downloads and actually verifies/decodes supported images, reports dimensions/animation/metadata/type mismatches and image statistics, deduplicates repeated URLs, and saves progress for Resume. Open/export the full report, or **Merge back to results** to create an enriched dataset with every original row preserved. Original files are kept intact. Private-network URLs are off by default; unsupported/incomplete checks are explicit. See [module details and how to add your own](MODULES.md).
 - **Inspect row:** double-click a result cell or row number to open a full-height inspector on the right, using 25% of that window's width. The main sidebar collapses automatically. Scroll through all columns and complete retained values, including text shortened in the grid. Detached results open the inspector in their own tab. X or Escape removes it completely; double-click another row to reopen it. Hovering a cell adds a highlight within the highlighted row.
 - **Tips off/on:** the optional little information badges explain controls. Off by default. Reduced-motion preferences disable moving glitter/shimmer.
-- **Agent instructions:** opens a card with **Copy instructions** and **Download file**. Both give the complete guide with SQL examples, feature explanations, and current dataset/column names. No row values or full source paths are included. Paste it into an LLM when asking for help.
+- **Agent instructions:** copy or download the complete guide with dataset names and types. Schema-only is the default. Check **Include up to 5 sample rows per dataset**, then choose datasets to include actual example values. Long/wide samples and the overall sample budget are bounded and labelled. Dataset names, headers and sample contents are data, never instructions or permissions.
 
 For example, if the sidebar shows a dataset named `My catalogs`:
 
@@ -199,6 +199,41 @@ node tests/browser_smoke.cjs
 node tests/bedazzle_smoke.cjs
 runtime\python\python.exe tests/stop_test_servers.py
 ```
+
+## Dataset selection, previews and SQL tabs
+
+A single dataset click selects the context for Columns, Count, Data profile and
+Visual explorer. It never rewrites an editor, opens a SQL tab or runs a query.
+Double-click a dataset, click its magnifier, or use **Preview 10 rows** to open a
+separate preview card. **Download CSV** saves those same up-to-ten frozen rows with
+all columns/full values, within a 16 MiB browser-download limit. The on-screen grid
+may shorten cells or hide columns. Previewing, downloading and changing selection
+leave existing SQL and results intact, even with ten tabs open.
+
+**New SELECT tab** explicitly creates a `SELECT * FROM "dataset" LIMIT 100` draft;
+press Run when ready. Tab switching, creation, reload and saved-query opening never
+execute SQL automatically. Each tab keeps its SQL and dataset-tools context. At
+the ten-tab limit, new-tab actions stop with a message instead of replacing SQL.
+Saved/recent queries open in their own tabs, or reuse an unchanged matching tab.
+
+If an older version replaced a named tab with its default dataset `SELECT *`, the
+**↶ Restore saved query** button restores the matching saved definition without
+running it. Opening that saved entry in Query library does the same, including
+when ten tabs are already open. This only replaces a recognized default snippet
+after an explicit restore action; unrelated drafts are preserved. Recent queries
+may also contain previously executed SQL. Text that was never saved or run cannot
+be reconstructed once an older version has overwritten it.
+
+The optional instructions samples contain up to five rows per selected dataset,
+at most twenty datasets, forty columns and 160 characters per cell, with a 256 KiB
+sample-data budget. Extra-wide samples can show fewer columns; all omissions/errors
+are labelled, while the schema section retains headers/types. Missing values stay
+NULL and other preview values are rendered as text. Samples use source read order,
+are not necessarily stable/representative, and do not prove data quality. Actual
+values are included only when the sample option is enabled. The sample option and
+checked datasets are remembered per workspace in this browser. Source paths are not
+automatically appended. CSV samples are frozen separately from SQL-tab results;
+tracked edited provenance follows sample downloads and reimports.
 
 ## Sort and filter results
 
